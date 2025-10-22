@@ -27,3 +27,4 @@ def second_order_dHdx(im: Scalar|Vector, k0: Scalar, k1: Scalar, k2: Scalar
     """
     return -(2 * k2 * np.log(im) + k1) / im * second_order_approx(im, k0, k1, k2)
 
+
