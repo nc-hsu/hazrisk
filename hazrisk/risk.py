@@ -1,28 +1,28 @@
 import numpy as np
 from hazrisk import hazard as haz
-from typedefs import Scalar, Vector
+from typedefs import scalar, vector
 
 
-def required_capacity_first_order(target_mafe: Scalar, k0: Scalar, k1: Scalar,
-                                  beta: Scalar) -> Scalar:
+def required_capacity_first_order(target_mafe: scalar, k0: scalar, k1: scalar,
+                                  beta: scalar) -> scalar:
     """Calculate theta_c from mean annual frequency of exceedance for first order 
     hazard."""
     return np.exp((0.5 * k1 * beta ** 2) - (np.log(target_mafe / k0) / k1))
 
 
-def mafe_first_order(theta_c: Scalar, k0: Scalar, k1: Scalar, beta: Scalar
-                     ) -> Scalar:
+def mafe_first_order(theta_c: scalar, k0: scalar, k1: scalar, beta: scalar
+                     ) -> scalar:
     """Calculate mean annual frequency of collapse for first order hazard."""
     return k0 * theta_c ** (-k1) * np.exp(0.5 * (beta * k1) ** 2)
 
 
-def p_second_order(k2: Scalar, beta: Scalar) -> Scalar:
+def p_second_order(k2: scalar, beta: scalar) -> scalar:
     """Calculate the p factor for second order risk approximation."""
     return 1 / (1 + 2 * k2 * beta ** 2)
 
 
-def required_capacity_second_order(target_mafe: Scalar, k0: Scalar, k1: Scalar, 
-                                   k2: Scalar, beta: Scalar) -> Scalar:
+def required_capacity_second_order(target_mafe: scalar, k0: scalar, k1: scalar, 
+                                   k2: scalar, beta: scalar) -> scalar:
     """Calculate theta_c from mean annual frequency of exceedance for the 
     second order hazard."""
     p = p_second_order(k2, beta)
@@ -30,8 +30,8 @@ def required_capacity_second_order(target_mafe: Scalar, k0: Scalar, k1: Scalar,
                 * np.log(target_mafe / (k0 * np.sqrt(p))))))
 
 
-def mafe_second_order(theta_c: Scalar, k0: Scalar, k1: Scalar, k2: Scalar, 
-                      beta: Scalar) -> Scalar:
+def mafe_second_order(theta_c: scalar, k0: scalar, k1: scalar, k2: scalar, 
+                      beta: scalar) -> scalar:
     """Calculate mean annual frequency of collapse for second order hazard."""
     p = p_second_order(k2, beta)
     H_theta = haz.second_order_approx(theta_c, k0, k1, k2)
@@ -39,7 +39,7 @@ def mafe_second_order(theta_c: Scalar, k0: Scalar, k1: Scalar, k2: Scalar,
                np.exp(0.5 * p * k1 ** 2 * beta **2)
 
 
-def numerical_mafe(im: Vector, H_im: Vector, fragility: Vector):
+def numerical_mafe(im: vector, H_im: vector, fragility: vector):
     """Calculate the mean annual frequency of collapse using numerical 
     integration.
     """
@@ -52,8 +52,8 @@ def numerical_mafe(im: Vector, H_im: Vector, fragility: Vector):
     return np.trapezoid(y, im) + H_im[-1] * fragility[-1]
 
 
-def risk_contribution(im: Scalar|Vector, H_im: Vector, fragility: Vector,  
-                      normalised: bool=True) -> Scalar|Vector:
+def risk_contribution(im: scalar|vector, H_im: vector, fragility: vector,  
+                      normalised: bool=True) -> scalar|vector:
     """Calculate the risk contribution using the left Riemann Sum.
     -- fragility: fragility curve values
     -- dH_dx: derivative of the hazard curve
