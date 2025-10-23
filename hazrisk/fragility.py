@@ -1,5 +1,5 @@
 from scipy.stats import lognorm
-from .types import Scalar, Vector
+from typedefs import Scalar, Vector
 
 def lognormal_fragility_curve(im: Scalar|Vector, median: Scalar, beta: Scalar):
     """Calculate the probability of limit state exceedance of an im or ims

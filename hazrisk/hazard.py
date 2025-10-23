@@ -1,5 +1,5 @@
 import numpy as np
-from .types import Scalar, Vector
+from typedefs import Scalar, Vector
 
 def first_order_approx(im: Scalar|Vector, k0: Scalar, k1: Scalar
                        ) -> Scalar|Vector:

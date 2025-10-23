@@ -1,6 +1,6 @@
 import numpy as np
-from . import hazard as haz
-from .types import Scalar, Vector
+from hazrisk import hazard as haz
+from typedefs import Scalar, Vector
 
 
 def required_capacity_first_order(target_mafe: Scalar, k0: Scalar, k1: Scalar,
