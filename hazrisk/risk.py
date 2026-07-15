@@ -39,17 +39,69 @@ def mafe_second_order(theta_c: scalar, k0: scalar, k1: scalar, k2: scalar,
                np.exp(0.5 * p * k1 ** 2 * beta **2)
 
 
-def numerical_mafe(im: vector, H_im: vector, fragility: vector):
-    """Calculate the mean annual frequency of collapse using numerical 
-    integration.
+def numerical_mafe(H_im: vector, fragility: vector) -> scalar:
+    """Calculate the mean annual frequency of collapse by numerical integration.
+
+    The collapse risk is the standard hazard-fragility convolution integral
+
+        lambda_C = integral of  P(C|im) * |d(lambda)/d(im)|  d(im)
+
+    where P(C|im) is the fragility (probability of collapse given the intensity
+    measure ``im``) and lambda(im) = ``H_im`` is the hazard curve (mean annual
+    frequency of exceeding ``im``).
+
+    Rather than estimate the hazard derivative ``d(lambda)/d(im)`` and re-integrate
+    it, this changes the variable of integration from ``im`` to the hazard
+    ``lambda``. Because the hazard is monotonically decreasing in ``im``,
+    ``|d(lambda)/d(im)| d(im) = -d(lambda)``, and the integral collapses to
+
+        lambda_C = -integral of  P(C|im)  d(lambda)
+
+    i.e. simply the fragility integrated against the hazard curve. Geometrically,
+    if the fragility is plotted on the y-axis against ``H_im`` on the x-axis, the
+    collapse risk is the area under that curve. ``np.trapezoid(fragility, H_im)``
+    returns the signed area under the polyline through the points
+    ``(H_im[i], fragility[i])``; since the arrays are ordered by increasing ``im``
+    (hence decreasing ``H_im``) the x-axis is traversed right-to-left and the
+    signed area is negative, so the result is negated.
+
+    This formulation:
+    - trapezoidally integrates the smooth, bounded fragility curve rather than the
+      sharply peaked hazard derivative, which linear interpolation represents far
+      more faithfully;
+    - remains correct for non-uniformly spaced intensity measure levels, because
+      the area uses the actual ``H_im`` spacing and ``im`` itself drops out.
+
+    The final term ``H_im[-1] * fragility[-1]`` captures the contribution of all
+    intensities beyond the last level ``im[-1]``. This is the region where the
+    hazard runs from ``0`` up to ``H_im[-1]`` and the fragility is taken to stay at
+    ``fragility[-1]``; geometrically it is the rectangle that extends the area down
+    to ``H_im = 0``.
+
+    Note that ``fragility`` and ``H_im`` must be discretised at the same intensity
+    measure levels ``im`` so that each point ``(H_im[i], fragility[i])`` is a
+    matched pair; ``im`` is retained only to document this shared support and is
+    not used in the calculation.
+
+    im : vector
+        Intensity measure levels (ordered increasing). Not used directly; the
+        fragility and hazard must be evaluated at these same levels.
+
+    Parameters
+    ----------
+    H_im : vector
+        Hazard curve values, i.e. the mean annual frequency of exceeding each
+        ``im`` (monotonically decreasing).
+    fragility : vector
+        Fragility curve, i.e. P(collapse | im) at each ``im``.
+
+    Returns
+    -------
+    scalar
+        The mean annual frequency of collapse.
     """
-    dim = np.diff(im)
-    dH = np.diff(H_im)
-    dH_dim = dH / dim
-    dH_dim = np.append(dH_dim, dH_dim[-1])
-    y = fragility[:len(dH_dim)] * np.abs(dH_dim)
-    # add last term to capture the contribution of all imls larger than the last im
-    return np.trapezoid(y, im) + H_im[-1] * fragility[-1]
+    # -trapz because H_im decreases with im; add the tail beyond the last level.
+    return -np.trapezoid(fragility, H_im) + H_im[-1] * fragility[-1]
 
 
 def risk_contribution(im: scalar|vector, H_im: vector, fragility: vector,  
