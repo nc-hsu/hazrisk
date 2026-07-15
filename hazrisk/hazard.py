@@ -1,5 +1,5 @@
 import numpy as np
-from typedefs import scalar, vector
+from hazrisk.typedefs import scalar, vector
 
 def first_order_approx(im: scalar|vector, k0: scalar, k1: scalar
                        ) -> scalar|vector:
