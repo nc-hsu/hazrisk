@@ -28,3 +28,18 @@ def second_order_dHdx(im: scalar|vector, k0: scalar, k1: scalar, k2: scalar
     return -(2 * k2 * np.log(im) + k1) / im * second_order_approx(im, k0, k1, k2)
 
 
+def poe_to_mafe(poe: scalar|vector, t: scalar=1) -> float:
+    """ converts probability of exceedance in time span `t` to mean annual 
+    frequency of exceedance"""
+    return -np.log(1-poe) / t
+
+
+def mafe_to_poe(mafe: scalar|vector, t:scalar=1) -> float:
+    """ converts mean annual frequency of exceedance to 
+    probability of exceedance in time span `t` """
+    return 1 - np.exp((-mafe * t))
+
+
+def poe_to_rtp(poe: scalar|vector, t: scalar=1) -> float:
+    """ converts probability of exceedance in time span `t` to mean return period"""
+    return 1 / poe_to_mafe(poe, t)
