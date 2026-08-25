@@ -22,20 +22,20 @@ def second_order_approx(im: scalar|vector, k0: scalar, k1: scalar, k2: scalar
 def second_order_dHdx(im: scalar|vector, k0: scalar, k1: scalar, k2: scalar
                       ) -> scalar|vector:
     """Derivative of the second order hazard function.
-    --> derived using the chain rule with: 
+    --> derived using the chain rule with:
                     g(s) = -k2 * log(s) ** 2 - k1 * log(s)
     """
     return -(2 * k2 * np.log(im) + k1) / im * second_order_approx(im, k0, k1, k2)
 
 
 def poe_to_mafe(poe: scalar|vector, t: scalar=1) -> float:
-    """ converts probability of exceedance in time span `t` to mean annual 
+    """ converts probability of exceedance in time span `t` to mean annual
     frequency of exceedance"""
     return -np.log(1-poe) / t
 
 
 def mafe_to_poe(mafe: scalar|vector, t:scalar=1) -> float:
-    """ converts mean annual frequency of exceedance to 
+    """ converts mean annual frequency of exceedance to
     probability of exceedance in time span `t` """
     return 1 - np.exp((-mafe * t))
 
@@ -43,3 +43,373 @@ def mafe_to_poe(mafe: scalar|vector, t:scalar=1) -> float:
 def poe_to_rtp(poe: scalar|vector, t: scalar=1) -> float:
     """ converts probability of exceedance in time span `t` to mean return period"""
     return 1 / poe_to_mafe(poe, t)
+
+
+def _validate_curve(im: vector, H_im: vector) -> tuple[vector, vector]:
+    """Check that a numerical hazard curve is usable for a log-log fit.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels, ordered by increasing ``im``.
+    H_im : vector
+        Hazard curve values, i.e. the mean annual frequency of exceeding each
+        ``im``.
+
+    Returns
+    -------
+    tuple of vector
+        ``im`` and ``H_im`` cast to float arrays.
+    """
+    im = np.asarray(im, dtype=float)
+    H_im = np.asarray(H_im, dtype=float)
+
+    if im.ndim != 1 or H_im.ndim != 1:
+        raise ValueError("im and H_im must be one-dimensional")
+    if im.size != H_im.size:
+        raise ValueError(f"im and H_im must be the same length, got {im.size} "
+                         f"and {H_im.size}")
+    if np.any(im <= 0):
+        raise ValueError("im must be strictly positive to fit in log space")
+    if np.any(H_im <= 0):
+        raise ValueError("H_im must be strictly positive to fit in log space; "
+                         "trim the zero-hazard tail of the curve first")
+    if np.any(np.diff(im) <= 0):
+        raise ValueError("im must be strictly increasing")
+    if np.any(np.diff(H_im) >= 0):
+        raise ValueError("H_im must be strictly decreasing with increasing im")
+
+    return im, H_im
+
+
+def _x_from_iml(im: vector, H_im: vector, iml: vector) -> tuple[vector, vector]:
+    """Interpolate the hazard curve at the requested intensity measure levels.
+
+    The interpolation is linear in ``ln(im)`` vs ``ln(H)``, consistent with the
+    space the hazard approximations are fitted in. Values outside the range of
+    the supplied curve raise rather than extrapolate.
+
+    Parameters
+    ----------
+    im, H_im : vector
+        The numerical hazard curve.
+    iml : vector
+        Intensity measure levels at which to anchor the fit.
+
+    Returns
+    -------
+    tuple of vector
+        ``(x, y) = (ln(iml), ln(H(iml)))``.
+    """
+    iml = np.atleast_1d(np.asarray(iml, dtype=float))
+    if np.any(iml <= 0):
+        raise ValueError("fitting points given as iml must be strictly positive")
+    if np.any(iml < im[0]) or np.any(iml > im[-1]):
+        raise ValueError(f"fitting points must lie within the supplied curve, "
+                         f"im = [{im[0]:g}, {im[-1]:g}]")
+
+    x = np.log(iml)
+    y = np.interp(x, np.log(im), np.log(H_im))
+    return x, y
+
+
+def _x_from_mafe(im: vector, H_im: vector, mafe: vector) -> tuple[vector, vector]:
+    """Invert the hazard curve at the requested mean annual frequencies.
+
+    As in :func:`_x_from_iml` the interpolation is linear in ``ln(im)`` vs
+    ``ln(H)``, here solving for ``im`` given ``H``. ``np.interp`` requires an
+    increasing sample-point array, so the curve is reversed: ``ln(H)`` decreases
+    with increasing ``im``.
+
+    Parameters
+    ----------
+    im, H_im : vector
+        The numerical hazard curve.
+    mafe : vector
+        Mean annual frequencies of exceedance at which to anchor the fit.
+
+    Returns
+    -------
+    tuple of vector
+        ``(x, y) = (ln(im(mafe)), ln(mafe))``.
+    """
+    mafe = np.atleast_1d(np.asarray(mafe, dtype=float))
+    if np.any(mafe <= 0):
+        raise ValueError("fitting points given as mafe must be strictly positive")
+    if np.any(mafe > H_im[0]) or np.any(mafe < H_im[-1]):
+        raise ValueError(f"fitting points must lie within the supplied curve, "
+                         f"H_im = [{H_im[-1]:g}, {H_im[0]:g}]")
+
+    y = np.log(mafe)
+    x = np.interp(y, np.log(H_im)[::-1], np.log(im)[::-1])
+    return x, y
+
+
+def _fitting_points(im: vector, H_im: vector, iml, mafe, n: int
+                    ) -> tuple[vector, vector]:
+    """Resolve the ``iml`` / ``mafe`` arguments into ``n`` log-log fitting points."""
+    if (iml is None) == (mafe is None):
+        raise ValueError("give exactly one of iml or mafe as the fitting points")
+
+    if iml is not None:
+        x, y = _x_from_iml(im, H_im, iml)
+    else:
+        x, y = _x_from_mafe(im, H_im, mafe)
+
+    if x.size != n:
+        raise ValueError(f"expected {n} fitting points, got {x.size}")
+    if np.unique(x).size != n:
+        raise ValueError("fitting points must be distinct")
+
+    return x, y
+
+
+def _band_points(im: vector, H_im: vector, iml_band, mafe_band, n: int
+                 ) -> tuple[vector, vector]:
+    """Select the portion of the curve to regress, in log-log coordinates.
+
+    Parameters
+    ----------
+    im, H_im : vector
+        The numerical hazard curve.
+    iml_band, mafe_band : tuple of scalar, optional
+        A ``(low, high)`` pair bounding the fitting range in intensity measure
+        or in mean annual frequency terms (inclusive). At most one may be given;
+        if neither is, the whole curve is used.
+    n : int
+        Minimum number of points required by the fit (``degree + 1``).
+
+    Returns
+    -------
+    tuple of vector
+        ``(x, y) = (ln(im), ln(H_im))`` over the selected band.
+    """
+    if iml_band is not None and mafe_band is not None:
+        raise ValueError("give at most one of iml_band or mafe_band")
+
+    if iml_band is not None:
+        low, high = sorted(float(b) for b in iml_band)
+        mask = (im >= low) & (im <= high)
+        band = f"iml_band = ({low:g}, {high:g})"
+    elif mafe_band is not None:
+        low, high = sorted(float(b) for b in mafe_band)
+        mask = (H_im >= low) & (H_im <= high)
+        band = f"mafe_band = ({low:g}, {high:g})"
+    else:
+        mask = np.ones(im.size, dtype=bool)
+        band = "the supplied curve"
+
+    if mask.sum() < n:
+        raise ValueError(f"{band} contains {mask.sum()} points of the curve, "
+                         f"but at least {n} are needed for this fit")
+
+    return np.log(im[mask]), np.log(H_im[mask])
+
+
+def _fit_log_log(x: vector, y: vector, degree: int) -> vector:
+    """Fit ``y = c0 + c1*x + ...`` of the given degree, ascending coefficients.
+
+    With exactly ``degree + 1`` points the Vandermonde system is square and is
+    solved exactly, so the fitted curve passes through every point. With more
+    points it is a least-squares fit.
+    """
+    if x.size == degree + 1:
+        return np.linalg.solve(np.vander(x, degree + 1, increasing=True), y)
+    return np.polynomial.polynomial.polyfit(x, y, degree)
+
+
+def _r_squared(x: vector, y: vector, coefficients: vector) -> float:
+    """Coefficient of determination of a log-log fit, on the ``ln(H)`` residuals.
+
+    This is measured in the space the least-squares fit actually minimises, so
+    every decade of mean annual frequency carries equal weight.
+    """
+    residuals = y - np.polynomial.polynomial.polyval(x, coefficients)
+    ss_res = float(np.sum(residuals ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    if ss_tot == 0:
+        return 1.0
+    return 1 - ss_res / ss_tot
+
+
+def fit_first_order_points(im: vector, H_im: vector, iml=None, mafe=None
+                           ) -> tuple[float, float]:
+    """Fit the first order hazard approximation through two chosen points.
+
+    The first order form (Cornell et al. 2002, the SAC/FEMA power law)
+
+        H(im) = k0 * im ** (-k1)
+
+    is a straight line in log-log space,
+
+        ln(H) = ln(k0) - k1 * ln(im),
+
+    so two points determine it exactly and the fitted curve passes through both.
+    This is the usual way the approximation is anchored in practice: pick the two
+    hazard levels that bracket the limit state of interest.
+
+    Points that do not fall on a value of the supplied curve are interpolated
+    linearly in ``ln(im)`` vs ``ln(H)``; points outside the curve raise rather
+    than being extrapolated.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing).
+    iml : vector, optional
+        The two intensity measure levels to fit through.
+    mafe : vector, optional
+        The two mean annual frequencies of exceedance to fit through. Exactly
+        one of ``iml`` and ``mafe`` must be given.
+
+    Returns
+    -------
+    tuple of float
+        ``(k0, k1)`` of the fitted first order approximation.
+    """
+    im, H_im = _validate_curve(im, H_im)
+    x, y = _fitting_points(im, H_im, iml, mafe, 2)
+    c0, c1 = _fit_log_log(x, y, 1)
+    return float(np.exp(c0)), float(-c1)
+
+
+def fit_second_order_points(im: vector, H_im: vector, iml=None, mafe=None
+                            ) -> tuple[float, float, float]:
+    """Fit the second order hazard approximation through three chosen points.
+
+    The second order form of Vamvatsikos (2013), "Derivation of new SAC-FEMA
+    performance evaluation solutions with second-order hazard approximation",
+
+        H(im) = k0 * exp(-k2 * ln(im)**2 - k1 * ln(im))
+
+    is a parabola in log-log space,
+
+        ln(H) = ln(k0) - k1 * ln(im) - k2 * ln(im)**2,
+
+    so three points determine it exactly and the fitted curve passes through all
+    three. The extra ``k2`` term captures the curvature that a power law misses,
+    which is why the anchor points should span the range of hazard of interest
+    rather than the whole curve.
+
+
+    Note that the fitted parabola turns over at ``ln(im) = -k1 / (2 * k2)`` and
+    decreases in hazard on the other side of that maximum, which is not physical.
+    That point normally sits below the fitted range, but the approximation should
+    only be trusted over the range it was fitted to.
+
+    Points that do not fall on a value of the supplied curve are interpolated
+    linearly in ``ln(im)`` vs ``ln(H)``; points outside the curve raise rather
+    than being extrapolated.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing).
+    iml : vector, optional
+        The three intensity measure levels to fit through.
+    mafe : vector, optional
+        The three mean annual frequencies of exceedance to fit through. Exactly
+        one of ``iml`` and ``mafe`` must be given.
+
+    Returns
+    -------
+    tuple of float
+        ``(k0, k1, k2)`` of the fitted second order approximation.
+    """
+    im, H_im = _validate_curve(im, H_im)
+    x, y = _fitting_points(im, H_im, iml, mafe, 3)
+    c0, c1, c2 = _fit_log_log(x, y, 2)
+    return float(np.exp(c0)), float(-c1), float(-c2)
+
+
+def fit_first_order_regression(im: vector, H_im: vector, iml_band=None,
+                               mafe_band=None) -> tuple[float, float, float]:
+    """Least-squares fit of the first order hazard approximation over a band.
+
+    Fits ``H(im) = k0 * im ** (-k1)`` (Cornell et al. 2002) by linear regression
+    of ``ln(H)`` on ``ln(im)`` over the requested portion of the curve, rather
+    than forcing the line through two chosen points. Restricting the band to the
+    hazard levels of engineering interest matters: a power law fitted over the
+    whole curve is usually a poor approximation at the rare end.
+
+    ``r2`` is the coefficient of determination of the ``ln(H)`` residuals, i.e.
+    measured in the space the fit is performed in, so all decades of mean annual
+    frequency weigh equally.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing).
+    iml_band : tuple of scalar, optional
+        ``(low, high)`` intensity measure bounds of the fitting range, inclusive.
+    mafe_band : tuple of scalar, optional
+        ``(low, high)`` mean annual frequency bounds of the fitting range,
+        inclusive. At most one of ``iml_band`` and ``mafe_band`` may be given; if
+        neither is, the whole curve is fitted.
+
+    Returns
+    -------
+    tuple of float
+        ``(k0, k1, r2)`` of the fitted first order approximation.
+    """
+    im, H_im = _validate_curve(im, H_im)
+    x, y = _band_points(im, H_im, iml_band, mafe_band, 2)
+    coefficients = _fit_log_log(x, y, 1)
+    c0, c1 = coefficients
+    return float(np.exp(c0)), float(-c1), _r_squared(x, y, coefficients)
+
+
+def fit_second_order_regression(im: vector, H_im: vector, iml_band=None,
+                                mafe_band=None
+                                ) -> tuple[float, float, float, float]:
+    """Least-squares fit of the second order hazard approximation over a band.
+
+    Fits ``H(im) = k0 * exp(-k2 * ln(im)**2 - k1 * ln(im))`` (Vamvatsikos 2013)
+    by quadratic regression of ``ln(H)`` on ``ln(im)`` over the requested portion
+    of the curve, rather than forcing the parabola through three chosen points.
+    The quadratic term follows the curvature of a real hazard curve, so this
+    typically holds over a wider band than the first order fit does.
+
+
+    Note that the fitted parabola turns over at ``ln(im) = -k1 / (2 * k2)`` and
+    decreases in hazard on the other side of that maximum, which is not physical.
+    That point normally sits below the fitted range, but the approximation should
+    only be trusted over the range it was fitted to.
+
+    ``r2`` is the coefficient of determination of the ``ln(H)`` residuals, i.e.
+    measured in the space the fit is performed in, so all decades of mean annual
+    frequency weigh equally.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing).
+    iml_band : tuple of scalar, optional
+        ``(low, high)`` intensity measure bounds of the fitting range, inclusive.
+    mafe_band : tuple of scalar, optional
+        ``(low, high)`` mean annual frequency bounds of the fitting range,
+        inclusive. At most one of ``iml_band`` and ``mafe_band`` may be given; if
+        neither is, the whole curve is fitted.
+
+    Returns
+    -------
+    tuple of float
+        ``(k0, k1, k2, r2)`` of the fitted second order approximation.
+    """
+    im, H_im = _validate_curve(im, H_im)
+    x, y = _band_points(im, H_im, iml_band, mafe_band, 3)
+    coefficients = _fit_log_log(x, y, 2)
+    c0, c1, c2 = coefficients
+    return float(np.exp(c0)), float(-c1), float(-c2), _r_squared(x, y, coefficients)
