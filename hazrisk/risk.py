@@ -126,4 +126,71 @@ def risk_contribution(im: scalar|vector, H_im: vector, fragility: vector,
         return contributions / mafe
     return
 
-    # return fragility * np.abs(dH_dim) * dim / mafe
+
+def risk_ratio_first_order(
+        R_theta: scalar|vector, k1:scalar|vector, 
+        beta_1: scalar|vector|None, R_beta: scalar|vector=1
+        ) -> np.ndarray:
+    """ calculate the risk ratio between two median capacities for the first order hazard
+    
+    Any of them can be vector, in which case the output is a multidimensional array with the same shape as the broadcasted inputs.
+
+    R_theta: scalar|vector (n) - ratio of median capacities (theta_2/theta_1)
+    k1: scalar|vector (m) - first order hazard exponent
+    beta_1: scalar|vector (p) - standard deviation of the first order hazard
+    R_beta: scalar|vector (q) - ratio of median fragilities
+    
+
+    Returns:
+    -------
+    R_lambda: scalar|np.ndarray shape(n, m, p, q) - ratio of mean annual frequencies of exceedance (lambda_2/lambda_1)
+    """
+
+    R_theta = np.asarray(R_theta)
+    k1 = np.asarray(k1)
+    beta_1 = np.asarray(beta_1)
+    R_beta = np.asarray(R_beta)
+
+    R_theta_4d = np.expand_dims(R_theta, axis=(1, 2, 3))
+    k1_4d = np.expand_dims(k1, axis=(0, 2, 3))
+    beta_1_4d = np.expand_dims(beta_1, axis=(0, 1, 3))
+    R_beta_4d = np.expand_dims(R_beta, axis=(0, 1, 2))
+
+    R_lambda = R_theta_4d ** (-k1_4d) * np.exp(0.5 * k1_4d ** 2 * (R_beta_4d ** 2 - 1) * beta_1_4d ** 2)
+
+    return R_lambda
+
+
+def theta_ratio_first_order(
+        R_lambda: scalar|vector, k1:scalar|vector, 
+        beta_1: scalar|vector|None, R_beta: scalar|vector=1
+        ) -> np.ndarray:
+    """ calculate the ratio of median capacities to achieve a desired change in risk level
+    using the first order hazard approximation.
+    
+    Any of them can be vector, in which case the output is a multidimensional array with the same shape as the broadcasted inputs.
+
+    R_lambda: scalar|vector (n) - ratio of mean annual frequencies of exceedance (lambda_2/lambda_1)
+    k1: scalar|vector (m) - first order hazard exponent
+    beta_1: scalar|vector (p) - standard deviation of the first order hazard
+    R_beta: scalar|vector (q) - ratio of median fragilities
+    
+
+    Returns:
+    -------
+    R_theta: scalar|np.ndarray shape(n, m, p, q) - ratio of median capacities (theta_2/theta_1)
+    """
+
+    R_lambda = np.asarray(R_lambda)
+    k1 = np.asarray(k1)
+    beta_1 = np.asarray(beta_1)
+    R_beta = np.asarray(R_beta)
+
+    R_lambda_4d = np.expand_dims(R_lambda, axis=(1, 2, 3))
+    k1_4d = np.expand_dims(k1, axis=(0, 2, 3))
+    beta_1_4d = np.expand_dims(beta_1, axis=(0, 1, 3))
+    R_beta_4d = np.expand_dims(R_beta, axis=(0, 1, 2))
+
+    R_theta = np.exp(0.5 * k1_4d * (R_beta_4d ** 2 - 1) * beta_1_4d ** 2 - np.log(R_lambda_4d) / k1_4d)
+
+    return R_theta
