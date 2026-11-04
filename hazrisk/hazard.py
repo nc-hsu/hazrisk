@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 from hazrisk.typedefs import scalar, vector
 
 def first_order_approx(im: scalar|vector, k0: scalar, k1: scalar
@@ -413,3 +414,121 @@ def fit_second_order_regression(im: vector, H_im: vector, iml_band=None,
     coefficients = _fit_log_log(x, y, 2)
     c0, c1, c2 = coefficients
     return float(np.exp(c0)), float(-c1), float(-c2), _r_squared(x, y, coefficients)
+
+
+def _trim_zero_tail(im: vector, H_im: vector) -> tuple[vector, vector]:
+    """Drop the trailing non-positive values of a numerical hazard curve.
+
+    OpenQuake writes a hazard of exactly zero above the truncation ceiling of the
+    ground motion model, and also wherever the probability of exceedance falls
+    below the precision it is stored at. Neither can be represented in log space,
+    so the curve is cut at its last positive value. Only the *tail* is trimmed: a
+    zero followed by a positive value is not a real hazard curve and is left for
+    :func:`_validate_curve` to reject.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels, ordered by increasing ``im``.
+    H_im : vector
+        Hazard curve values, i.e. the mean annual frequency of exceeding each
+        ``im``.
+
+    Returns
+    -------
+    tuple of vector
+        ``im`` and ``H_im`` up to and including the last positive ``H_im``.
+    """
+    im = np.asarray(im, dtype=float)
+    H_im = np.asarray(H_im, dtype=float)
+    positive = np.flatnonzero(H_im > 0)
+    if positive.size < 2:
+        raise ValueError("H_im needs at least two positive values")
+    return im[:positive[-1] + 1], H_im[:positive[-1] + 1]
+
+
+def _pchip_log_log(im: vector, H_im: vector) -> PchipInterpolator:
+    """PCHIP interpolant of ``ln(H)`` against ``ln(im)``, validated and trimmed."""
+    im, H_im = _validate_curve(*_trim_zero_tail(im, H_im))
+    return PchipInterpolator(np.log(im), np.log(H_im), extrapolate=False)
+
+
+def pchip_approx(iml: scalar|vector, im: vector, H_im: vector) -> scalar|vector:
+    """Numerical hazard curve interpolated by PCHIP in log-log space.
+
+    The hazard is interpolated as ``ln(H)`` against ``ln(im)`` with a piecewise
+    cubic Hermite interpolating polynomial (PCHIP; Fritsch & Carlson 1980,
+    "Monotone piecewise cubic interpolation", SIAM J. Numer. Anal. 17(2),
+    238-246). Between each pair of tabulated levels the curve is a cubic fixed by
+    the two end values and the two end slopes, and the slope at each level is a
+    weighted harmonic mean of the slopes of the neighbouring segments.
+
+    Compared with the straight-line log-log interpolation used elsewhere in this
+    module (:func:`_x_from_iml`):
+
+    - the slope ``d(ln H)/d(ln im)`` is continuous across the tabulated levels,
+      so the hazard derivative :func:`pchip_dHdx`, and any risk integrand built
+      from it, has no steps at those levels;
+    - the interpolant never overshoots the data, so the interpolated hazard is
+      strictly decreasing wherever the tabulated hazard is. An ordinary cubic
+      spline does not guarantee this.
+
+    The values at the tabulated levels are reproduced exactly, and a curve that
+    is already a straight line in log-log space (first order) is reproduced
+    exactly everywhere.
+
+    Trailing zeros in ``H_im`` (see :func:`_trim_zero_tail`) are dropped, and
+    the curve is not extrapolated: ``iml`` outside ``im[0]`` to the last
+    positive level returns ``nan``.
+
+    Parameters
+    ----------
+    iml : scalar or vector
+        Intensity measure levels at which to evaluate the hazard.
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing
+        apart from a trailing run of zeros).
+
+    Returns
+    -------
+    scalar or vector
+        The interpolated mean annual frequency of exceeding ``iml``.
+    """
+    interpolant = _pchip_log_log(im, H_im)
+    return np.exp(interpolant(np.log(iml)))
+
+
+def pchip_dHdx(iml: scalar|vector, im: vector, H_im: vector) -> scalar|vector:
+    """Derivative of the PCHIP-interpolated hazard curve, ``dH/d(im)``.
+
+    The interpolant is ``ln(H) = f(ln(im))`` (see :func:`pchip_approx`), so by
+    the chain rule
+
+        dH/d(im) = H(im) * f'(ln(im)) / im,
+
+    with ``f'`` the analytical derivative of the piecewise cubic. It is negative
+    and continuous. As for :func:`pchip_approx`, ``iml`` outside the curve
+    returns ``nan``.
+
+    Parameters
+    ----------
+    iml : scalar or vector
+        Intensity measure levels at which to evaluate the derivative.
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im``.
+
+    Returns
+    -------
+    scalar or vector
+        The derivative of the mean annual frequency of exceedance with respect
+        to ``im``, at ``iml``.
+    """
+    interpolant = _pchip_log_log(im, H_im)
+    x = np.log(iml)
+    return np.exp(interpolant(x)) * interpolant(x, 1) / np.asarray(iml)

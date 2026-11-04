@@ -1,5 +1,6 @@
 import numpy as np
 from hazrisk import hazard as haz
+from hazrisk.fragility import lognormal_fragility_curve
 from hazrisk.typedefs import scalar, vector
 
 
@@ -79,13 +80,12 @@ def numerical_mafe(H_im: vector, fragility: vector) -> scalar:
     to ``H_im = 0``.
 
     Note that ``fragility`` and ``H_im`` must be discretised at the same intensity
-    measure levels ``im`` so that each point ``(H_im[i], fragility[i])`` is a
-    matched pair; ``im`` is retained only to document this shared support and is
-    not used in the calculation.
+    measure levels ``im`` (ordered increasing) so that each point
+    ``(H_im[i], fragility[i])`` is a matched pair; ``im`` itself is not needed.
 
-    im : vector
-        Intensity measure levels (ordered increasing). Not used directly; the
-        fragility and hazard must be evaluated at these same levels.
+    Several fragility curves on the same hazard curve can be integrated in one
+    call by stacking them along the leading axes of ``fragility``: the
+    integration runs over the last axis, which must match ``H_im``.
 
     Parameters
     ----------
@@ -93,15 +93,151 @@ def numerical_mafe(H_im: vector, fragility: vector) -> scalar:
         Hazard curve values, i.e. the mean annual frequency of exceeding each
         ``im`` (monotonically decreasing).
     fragility : vector
-        Fragility curve, i.e. P(collapse | im) at each ``im``.
+        Fragility curve, i.e. P(collapse | im) at each ``im``. Shape ``(n,)``
+        for one curve or ``(..., n)`` for a stack of curves.
 
     Returns
     -------
-    scalar
-        The mean annual frequency of collapse.
+    scalar or vector
+        The mean annual frequency of collapse, one per fragility curve.
     """
     # -trapz because H_im decreases with im; add the tail beyond the last level.
-    return -np.trapezoid(fragility, H_im) + H_im[-1] * fragility[-1]
+    return (-np.trapezoid(fragility, H_im, axis=-1)
+            + H_im[-1] * fragility[..., -1])
+
+
+def numerical_mafe_pchip(theta_c: scalar|vector, im: vector, H_im: vector,
+                         beta: scalar|vector, n_im: int=2000) -> scalar|vector:
+    """Mean annual frequency of collapse for a lognormal fragility on a numerical
+    hazard curve, with the hazard interpolated by PCHIP in log-log space.
+
+    A PSHA hazard curve is usually tabulated at a few tens of intensity levels,
+    far too coarse to integrate directly against a fragility curve with a
+    dispersion of 0.2-0.4. This function refines it first: the hazard is
+    interpolated onto ``n_im`` log-spaced levels with :func:`hazard.pchip_approx`
+    (Fritsch & Carlson 1980), the lognormal fragility is evaluated on the same
+    levels, and the pair is integrated with :func:`numerical_mafe`.
+
+    Why PCHIP rather than straight lines in log-log space: the risk integrand is
+    ``P(C|im) * |dH/d(im)|``, and with straight-line interpolation the hazard
+    slope is constant within each tabulated interval and steps at every
+    tabulated level. That shows as jumps in the risk integrand (see
+    :func:`risk_contribution_pchip`) and biases the integral where the slope of
+    ``ln(H)`` is changing quickly, i.e. at the rare end of the curve that
+    dominates collapse risk. PCHIP keeps the slope continuous and cannot
+    overshoot, so the refined hazard still decreases monotonically. For a first
+    order (power law) hazard curve the interpolation is exact and the result
+    converges to :func:`mafe_first_order`.
+
+    The integration range is ``im[0]`` to the last positive value of ``H_im``:
+
+    - Below ``im[0]`` the fragility is assumed negligible, so the curve must
+      start well below the fragility median.
+    - Trailing zeros in ``H_im``, as written by OpenQuake above the truncation
+      ceiling or below the precision the probability is stored at, are dropped
+      (:func:`hazard._trim_zero_tail`). Everything above the last positive level
+      enters through the tail term of :func:`numerical_mafe`, i.e. with the
+      fragility held at its value at that level.
+
+    ``theta_c`` and ``beta`` broadcast against each other, so a whole set of
+    fragility curves (e.g. a Monte Carlo sample of ``(theta_c, beta)``, or the
+    boundary of a confidence region) is integrated against the same refined
+    hazard in one call.
+
+    Parameters
+    ----------
+    theta_c : scalar or vector
+        Median collapse capacity, in the units of ``im``.
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing
+        apart from a trailing run of zeros).
+    beta : scalar or vector
+        Lognormal dispersion of the collapse fragility.
+    n_im : int, optional
+        Number of log-spaced levels of the refined integration grid. The
+        default of 2000 puts the integration error well below 0.1 % for
+        ``beta`` down to about 0.1.
+
+    Returns
+    -------
+    scalar or vector
+        The mean annual frequency of collapse, with the broadcast shape of
+        ``theta_c`` and ``beta``.
+    """
+    im, H_im = haz._trim_zero_tail(im, H_im)
+    iml = np.geomspace(im[0], im[-1], n_im)
+    H_iml = haz.pchip_approx(iml, im, H_im)
+
+    # Trailing axis = intensity level, leading axes = the (theta_c, beta) set.
+    theta_c, beta = np.broadcast_arrays(np.asarray(theta_c, dtype=float),
+                                        np.asarray(beta, dtype=float))
+    fragility = lognormal_fragility_curve(iml, theta_c[..., None], beta[..., None])
+
+    mafe = numerical_mafe(H_iml, fragility)
+    return float(mafe) if np.ndim(mafe) == 0 else mafe
+
+
+def risk_contribution_pchip(iml: scalar|vector, theta_c: scalar, im: vector,
+                            H_im: vector, beta: scalar,
+                            normalised: bool=True) -> scalar|vector:
+    """Contribution to the collapse risk per unit ``ln(im)``, with the hazard
+    interpolated by PCHIP in log-log space.
+
+    This is the integrand of the hazard-fragility convolution expressed per unit
+    of ``ln(im)``,
+
+        d(lambda_C)/d(ln im) = P(C|im) * |dH/d(im)| * im,
+
+    with ``dH/d(im)`` from :func:`hazard.pchip_dHdx`. Plotted against ``im`` on
+    a log axis, the area under it is the collapse risk, so it shows which
+    intensities the risk comes from: the continuous counterpart of
+    :func:`risk_contribution`. Per unit ``ln(im)`` rather than per unit ``im``
+    because hazard curves are tabulated and plotted on log-spaced levels.
+
+    Because the PCHIP hazard slope is continuous, the result has no steps at the
+    tabulated levels of the hazard curve, which a straight-line log-log
+    interpolation produces.
+
+    With ``normalised=True`` the contribution is divided by the total collapse
+    risk from :func:`numerical_mafe_pchip`, so it integrates (over ``ln(im)``)
+    to one minus the share of the risk that lies above the last positive level
+    of the curve.
+
+    Parameters
+    ----------
+    iml : scalar or vector
+        Intensity measure levels at which to evaluate the contribution. Levels
+        outside ``im[0]`` to the last positive level of the curve return
+        ``nan``.
+    theta_c : scalar
+        Median collapse capacity, in the units of ``im``.
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing
+        apart from a trailing run of zeros).
+    beta : scalar
+        Lognormal dispersion of the collapse fragility.
+    normalised : bool, optional
+        If True (the default) divide by the total mean annual frequency of
+        collapse, as :func:`risk_contribution` does.
+
+    Returns
+    -------
+    scalar or vector
+        ``d(lambda_C)/d(ln im)`` at each ``iml`` (per year), or its share of the
+        total if ``normalised``.
+    """
+    iml = np.asarray(iml, dtype=float)
+    contribution = (lognormal_fragility_curve(iml, theta_c, beta) *
+                    -haz.pchip_dHdx(iml, im, H_im) * iml)
+    if normalised:
+        return contribution / numerical_mafe_pchip(theta_c, im, H_im, beta)
+    return contribution
 
 
 def risk_contribution(im: scalar|vector, H_im: vector, fragility: vector,  
@@ -181,10 +317,10 @@ def theta_ratio_first_order(
     R_theta: scalar|np.ndarray shape(n, m, p, q) - ratio of median capacities (theta_2/theta_1)
     """
 
-    R_lambda = np.asarray(R_lambda)
-    k1 = np.asarray(k1)
-    beta_1 = np.asarray(beta_1)
-    R_beta = np.asarray(R_beta)
+    R_lambda = np.array(R_lambda)
+    k1 = np.array(k1)
+    beta_1 = np.array(beta_1)
+    R_beta = np.array(R_beta)
 
     R_lambda_4d = np.expand_dims(R_lambda, axis=(1, 2, 3))
     k1_4d = np.expand_dims(k1, axis=(0, 2, 3))
