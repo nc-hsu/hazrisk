@@ -1,0 +1,127 @@
+# Continuous integration: lint, type checks, tests, docs and packaging on every
+# push to main and every pull request. The commands are the ones in
+# CONTRIBUTING.md, so a green local run should mean a green CI run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:  # allow a manual run from the Actions tab
+
+# The jobs only read the repository.
+permissions:
+  contents: read
+
+# A new push to the same branch or pull request cancels the run still going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Lint, type checks and tests (with the docstring examples) on every
+  # supported Python on Linux, plus the oldest supported Python on Windows and
+  # macOS.
+  test:
+    name: test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false  # let the other jobs finish, to see every failure
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install hazrisk with the test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]" ruff mypy
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Formatting (ruff)
+        run: ruff format --check .
+      - name: Type check src/ (mypy, strict)
+        run: mypy
+      - name: Type check the tests (mypy)
+        run: mypy tests
+      - name: Tests and doctests (pytest)
+        run: python -m pytest
+
+  # The lowest dependency versions pyproject.toml allows, so the lower bounds
+  # stay true.
+  lowest-versions:
+    name: lowest versions (numpy 2.0, scipy 1.13)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install hazrisk with numpy and scipy at their lower bounds
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]" "numpy==2.0.*" "scipy==1.13.*"
+          python -m pip list
+      - name: Tests and doctests (pytest)
+        run: python -m pytest
+
+  # The documentation, built as Read the Docs builds it: warnings are errors,
+  # and the example notebooks are executed.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install hazrisk with the docs tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[docs]"
+      - name: Build the docs (sphinx-build -W -n)
+        run: sphinx-build -W -n -b html docs docs/_build/html
+
+  # The distributions as PyPI would receive them: build, check the metadata,
+  # then test the installed wheel and the unpacked sdist, away from the
+  # source tree so the tests cannot import the repository copy.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install the build tools
+        run: python -m pip install --upgrade pip build twine
+      - name: Build the sdist and wheel
+        run: python -m build
+      - name: Check the metadata and README rendering (twine)
+        run: python -m twine check --strict dist/*
+      - name: Test the installed wheel
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install dist/*.whl pytest
+          mkdir "$RUNNER_TEMP/wheel-test"
+          cp -r tests "$RUNNER_TEMP/wheel-test/"
+          cd "$RUNNER_TEMP/wheel-test"
+          # Run the test files and the docstring examples of the installed
+          # package (--pyargs finds it in site-packages).
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pytest -p no:cacheprovider \
+            --import-mode=importlib --doctest-modules tests --pyargs hazrisk
+      - name: Test the unpacked sdist
+        run: |
+          python -m venv "$RUNNER_TEMP/sdist-venv"
+          # Installing from the sdist also checks that it builds on its own.
+          "$RUNNER_TEMP/sdist-venv/bin/python" -m pip install dist/*.tar.gz pytest
+          mkdir "$RUNNER_TEMP/sdist-test"
+          tar -xzf dist/*.tar.gz -C "$RUNNER_TEMP/sdist-test"
+          cd "$RUNNER_TEMP"/sdist-test/hazrisk-*
+          "$RUNNER_TEMP/sdist-venv/bin/python" -m pytest -p no:cacheprovider
