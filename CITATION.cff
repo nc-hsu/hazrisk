@@ -1,0 +1,67 @@
+# Citation metadata for the hazrisk software (https://citation-file-format.github.io).
+# GitHub's "Cite this repository" button and Zenodo read this file.
+# At release: fill in `version` and `date-released`; after the first release,
+# add the Zenodo concept DOI as `doi`.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "hazrisk: seismic hazard-curve approximation and risk integration"
+abstract: >-
+  hazrisk is a Python library for seismic risk calculations from a hazard
+  curve and a fragility curve. It fits first-order (power law) and
+  second-order (log-quadratic) approximations to numerical hazard curves,
+  evaluates the SAC/FEMA closed-form solutions for the mean annual frequency
+  of a limit state and the median capacity required for a target frequency,
+  integrates lognormal fragility curves numerically against tabulated hazard
+  curves with PCHIP interpolation, and computes the contribution of each
+  intensity level to the risk.
+authors:
+  - family-names: Clemett
+    given-names: Nicholas
+    email: nicholas.clemett@hsu-hh.de
+    affiliation: "Helmut-Schmidt-Universität / Universität der Bundeswehr Hamburg"
+    orcid: "https://orcid.org/0000-0003-3733-4971"
+# version: "0.1.0"
+# date-released: "YYYY-MM-DD"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/nc-hsu/hazrisk"
+url: "https://hazrisk.readthedocs.io"
+keywords:
+  - seismic risk
+  - PSHA
+  - hazard curve
+  - fragility
+  - SAC/FEMA
+  - MAFE
+  - earthquake engineering
+references:
+  - type: article
+    authors:
+      - family-names: Cornell
+        given-names: C. A.
+      - family-names: Jalayer
+        given-names: F.
+      - family-names: Hamburger
+        given-names: R. O.
+      - family-names: Foutch
+        given-names: D. A.
+    title: "Probabilistic basis for 2000 SAC Federal Emergency Management Agency steel moment frame guidelines"
+    journal: "Journal of Structural Engineering"
+    year: 2002
+    volume: 128
+    issue: 4
+    start: 526
+    end: 533
+    doi: "10.1061/(ASCE)0733-9445(2002)128:4(526)"
+  - type: article
+    authors:
+      - family-names: Vamvatsikos
+        given-names: D.
+    title: "Derivation of new SAC/FEMA performance evaluation solutions with second-order hazard approximation"
+    journal: "Earthquake Engineering & Structural Dynamics"
+    year: 2013
+    volume: 42
+    issue: 8
+    start: 1171
+    end: 1188
+    doi: "10.1002/eqe.2265"
