@@ -27,6 +27,7 @@ def im():
 
 # --- package and module interface -------------------------------------------
 
+
 def test_package_exposes_the_three_modules_and_the_version():
     assert hazrisk.__all__ == ["hazard", "fragility", "risk", "__version__"]
     assert isinstance(hazrisk.__version__, str)
@@ -35,12 +36,16 @@ def test_package_exposes_the_three_modules_and_the_version():
 @pytest.mark.parametrize("module", [hazard, fragility, risk])
 def test_all_lists_every_public_function_and_nothing_else(module):
     """__all__ must match the module's own public functions (not imports)."""
-    public = {name for name, obj in inspect.getmembers(module, inspect.isfunction)
-              if not name.startswith("_") and obj.__module__ == module.__name__}
+    public = {
+        name
+        for name, obj in inspect.getmembers(module, inspect.isfunction)
+        if not name.startswith("_") and obj.__module__ == module.__name__
+    }
     assert sorted(module.__all__) == sorted(public)
 
 
 # --- pchip_interpolant -------------------------------------------------------
+
 
 def test_pchip_interpolant_reproduces_pchip_approx(im):
     H_im = hazard.second_order_approx(im, K0, K1, K2)
@@ -88,28 +93,40 @@ def test_pchip_interpolant_rejects_an_increasing_curve(im):
 INT_IM = np.array([1, 2, 3, 5])
 
 
-@pytest.mark.parametrize("call", [
-    lambda x: hazard.first_order_approx(x, K0, 2),
-    lambda x: hazard.first_order_dHdx(x, K0, 2),
-    lambda x: hazard.second_order_approx(x, K0, K1, K2),
-    lambda x: hazard.second_order_dHdx(x, K0, K1, K2),
-    lambda x: fragility.lognormal_fragility_curve(x, 2, BETA),
-    lambda x: risk.mafe_first_order(x, K0, 2, BETA),
-    lambda x: risk.mafe_second_order(x, K0, K1, K2, BETA),
-], ids=["first_order_approx", "first_order_dHdx", "second_order_approx",
-        "second_order_dHdx", "lognormal_fragility_curve", "mafe_first_order",
-        "mafe_second_order"])
-@pytest.mark.parametrize("convert", [lambda a: a, list],
-                         ids=["int_array", "int_list"])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda x: hazard.first_order_approx(x, K0, 2),
+        lambda x: hazard.first_order_dHdx(x, K0, 2),
+        lambda x: hazard.second_order_approx(x, K0, K1, K2),
+        lambda x: hazard.second_order_dHdx(x, K0, K1, K2),
+        lambda x: fragility.lognormal_fragility_curve(x, 2, BETA),
+        lambda x: risk.mafe_first_order(x, K0, 2, BETA),
+        lambda x: risk.mafe_second_order(x, K0, K1, K2, BETA),
+    ],
+    ids=[
+        "first_order_approx",
+        "first_order_dHdx",
+        "second_order_approx",
+        "second_order_dHdx",
+        "lognormal_fragility_curve",
+        "mafe_first_order",
+        "mafe_second_order",
+    ],
+)
+@pytest.mark.parametrize("convert", [lambda a: a, list], ids=["int_array", "int_list"])
 def test_integer_inputs_match_float_inputs(call, convert):
     assert_array_equal(call(convert(INT_IM)), call(INT_IM.astype(float)))
 
 
-@pytest.mark.parametrize("name, values", [
-    ("poe_to_mafe", [0.02, 0.1, 0.5]),
-    ("poe_to_rtp", [0.02, 0.1, 0.5]),
-    ("mafe_to_poe", [1e-4, 2e-3, 1e-2]),
-])
+@pytest.mark.parametrize(
+    "name, values",
+    [
+        ("poe_to_mafe", [0.02, 0.1, 0.5]),
+        ("poe_to_rtp", [0.02, 0.1, 0.5]),
+        ("mafe_to_poe", [1e-4, 2e-3, 1e-2]),
+    ],
+)
 def test_conversions_accept_lists(name, values):
     fn = getattr(hazard, name)
     assert_array_equal(fn(values, 50), fn(np.array(values), 50))
@@ -119,23 +136,27 @@ def test_required_capacity_first_order_accepts_a_list():
     targets = [1e-4, 2e-4, 1e-3]
     assert_array_equal(
         risk.required_capacity_first_order(targets, K0, K1, BETA),
-        risk.required_capacity_first_order(np.array(targets), K0, K1, BETA))
+        risk.required_capacity_first_order(np.array(targets), K0, K1, BETA),
+    )
 
 
 def test_numerical_mafe_and_pchip_accept_lists(im):
     H_im = hazard.second_order_approx(im, K0, K1, K2)
     frag = fragility.lognormal_fragility_curve(im, THETA_C, BETA)
-    assert risk.numerical_mafe(list(H_im), list(frag)) == risk.numerical_mafe(
-        H_im, frag)
+    H_list, frag_list = np.asarray(H_im).tolist(), np.asarray(frag).tolist()
+    assert risk.numerical_mafe(H_list, frag_list) == risk.numerical_mafe(H_im, frag)
     iml = [0.01, 0.1, 1.0]
-    assert_array_equal(hazard.pchip_approx(iml, list(im), list(H_im)),
-                       hazard.pchip_approx(np.array(iml), im, H_im))
+    assert_array_equal(
+        hazard.pchip_approx(iml, im.tolist(), H_list),
+        hazard.pchip_approx(np.array(iml), im, H_im),
+    )
 
 
 def test_ratio_functions_accept_integer_lists():
     assert_array_equal(
         risk.risk_ratio_first_order([1, 2], [2, 3], [1], [1]),
-        risk.risk_ratio_first_order([1.0, 2.0], [2.0, 3.0], [1.0], [1.0]))
+        risk.risk_ratio_first_order([1.0, 2.0], [2.0, 3.0], [1.0], [1.0]),
+    )
 
 
 def test_scalar_inputs_still_give_scalars():

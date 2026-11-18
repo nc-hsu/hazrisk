@@ -1,20 +1,21 @@
 """Type aliases and input conversion shared by the hazrisk modules (private).
 
-``scalar`` is a single number and ``vector`` a float array. Most public
-functions accept ``scalar | vector`` for the intensity measure, which means
-they must stay numpy-broadcastable.
+Public functions take ``numpy.typing.ArrayLike`` inputs (a number, a list, a
+numpy array, ...) and return ``float | FloatArray``: a scalar for scalar
+inputs, otherwise a float array with the broadcast shape of the inputs.
 """
 
-from typing import Union
-
 import numpy as np
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
-scalar = Union[float, int]
-vector = NDArray[np.float64]
+# A float64 numpy array of any shape.
+type FloatArray = NDArray[np.float64]
+
+# What the functions return: a scalar for scalar input, otherwise an array.
+type FloatOrArray = float | FloatArray
 
 
-def as_float(x):
+def as_float(x: ArrayLike) -> FloatOrArray:
     """Convert a numeric input to float, leaving plain Python numbers alone.
 
     Lists, tuples and numpy arrays (including integer arrays) become float

@@ -5,7 +5,6 @@ from pytest import approx
 from hazrisk import hazard as haz
 from hazrisk import risk
 
-
 K0, K1, K2 = 0.002, 2.4, 0.15
 
 
@@ -28,6 +27,7 @@ def second_order_curve(im):
 
 
 # --- round-trip recovery of the generating coefficients ----------------------
+
 
 def test_first_order_points_recovers_coefficients(first_order_curve):
     im, H_im = first_order_curve
@@ -57,8 +57,7 @@ def test_second_order_regression_recovers_coefficients(second_order_curve):
     assert r2 == approx(1.0)
 
 
-def test_second_order_regression_of_first_order_curve_gives_zero_k2(
-        first_order_curve):
+def test_second_order_regression_of_first_order_curve_gives_zero_k2(first_order_curve):
     """A power law is a second order curve with k2 = 0."""
     im, H_im = first_order_curve
     k0, k1, k2, r2 = haz.fit_second_order_regression(im, H_im)
@@ -68,6 +67,7 @@ def test_second_order_regression_of_first_order_curve_gives_zero_k2(
 
 
 # --- the fitted curve passes through the requested points -------------------
+
 
 def test_points_fit_passes_through_the_anchors(second_order_curve):
     """The fit reproduces the hazard at the anchors, as log-log interpolated
@@ -82,6 +82,7 @@ def test_points_fit_passes_through_the_anchors(second_order_curve):
 
 
 # --- iml and mafe anchoring are equivalent ----------------------------------
+
 
 def test_iml_and_mafe_anchoring_agree(second_order_curve):
     im, H_im = second_order_curve
@@ -102,6 +103,7 @@ def test_first_order_mafe_anchoring(first_order_curve):
 
 # --- off-grid anchors are interpolated in log-log space ---------------------
 
+
 def test_off_grid_anchors_are_close():
     """Anchors between the supplied levels are log-log interpolated. That is a
     straight-line interpolation of a curve with log-log curvature, so the
@@ -110,7 +112,7 @@ def test_off_grid_anchors_are_close():
     im = np.logspace(-2, 0.5, 40)
     H_im = haz.second_order_approx(im, K0, K1, K2)
 
-    off_grid = np.sqrt(im[:-1] * im[1:])[[5, 20, 34]]    # midpoints in log space
+    off_grid = np.sqrt(im[:-1] * im[1:])[[5, 20, 34]]  # midpoints in log space
     assert not np.any(np.isin(off_grid, im))
 
     k0, k1, k2 = haz.fit_second_order_points(im, H_im, iml=off_grid)
@@ -130,18 +132,18 @@ def test_off_grid_anchors_are_exact_for_a_first_order_curve():
 
 # --- band selection ---------------------------------------------------------
 
+
 def test_iml_and_mafe_bands_select_the_same_points(second_order_curve):
     im, H_im = second_order_curve
     low, high = im[10], im[25]
     by_iml = haz.fit_second_order_regression(im, H_im, iml_band=(low, high))
-    by_mafe = haz.fit_second_order_regression(
-        im, H_im, mafe_band=(H_im[25], H_im[10]))
+    by_mafe = haz.fit_second_order_regression(im, H_im, mafe_band=(H_im[25], H_im[10]))
     assert by_mafe == approx(by_iml)
 
 
 def test_band_is_inclusive_of_its_bounds(second_order_curve):
     im, H_im = second_order_curve
-    x, y = haz._band_points(im, H_im, (im[10], im[25]), None, 3)
+    x, _ = haz._band_points(im, H_im, (im[10], im[25]), None, 3)
     assert x.size == 16
     assert np.exp(x[[0, -1]]) == approx([im[10], im[25]])
 
@@ -151,8 +153,7 @@ def test_narrow_band_improves_the_first_order_fit(second_order_curve):
     restricting the band to the rare end must improve the fit there."""
     im, H_im = second_order_curve
     _, _, r2_all = haz.fit_first_order_regression(im, H_im)
-    _, _, r2_band = haz.fit_first_order_regression(im, H_im,
-                                                   mafe_band=(1e-4, 1e-2))
+    _, _, r2_band = haz.fit_first_order_regression(im, H_im, mafe_band=(1e-4, 1e-2))
     assert r2_band > r2_all
     assert r2_all < 1.0
 
@@ -165,6 +166,7 @@ def test_band_bounds_may_be_given_either_way_round(second_order_curve):
 
 
 # --- error cases ------------------------------------------------------------
+
 
 def test_both_iml_and_mafe_raises(first_order_curve):
     im, H_im = first_order_curve
@@ -203,8 +205,9 @@ def test_anchor_outside_the_curve_raises(first_order_curve):
 def test_both_bands_raise(first_order_curve):
     im, H_im = first_order_curve
     with pytest.raises(ValueError, match="at most one"):
-        haz.fit_first_order_regression(im, H_im, iml_band=(0.05, 0.5),
-                                       mafe_band=(1e-4, 1e-2))
+        haz.fit_first_order_regression(
+            im, H_im, iml_band=(0.05, 0.5), mafe_band=(1e-4, 1e-2)
+        )
 
 
 def test_too_few_points_in_band_raises(second_order_curve):
@@ -236,8 +239,8 @@ def test_mismatched_lengths_raise(first_order_curve):
 
 # --- the fitted coefficients feed straight into risk.py ---------------------
 
-def test_fitted_coefficients_are_ordered_for_the_risk_functions(
-        second_order_curve):
+
+def test_fitted_coefficients_are_ordered_for_the_risk_functions(second_order_curve):
     """The (k0, k1, k2) tuple must drop straight into the closed-form risk
     functions, and reproduce the numerical result for the same curve."""
     im, H_im = second_order_curve
@@ -249,7 +252,9 @@ def test_fitted_coefficients_are_ordered_for_the_risk_functions(
     fine_im = np.logspace(-2, 1.5, 4000)
     fine_H = haz.second_order_approx(fine_im, K0, K1, K2)
     from hazrisk.fragility import lognormal_fragility_curve
+
     numerical = risk.numerical_mafe(
-        fine_H, lognormal_fragility_curve(fine_im, theta_c, beta))
+        fine_H, lognormal_fragility_curve(fine_im, theta_c, beta)
+    )
 
     assert closed_form == approx(numerical, rel=0.02)

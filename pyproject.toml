@@ -76,11 +76,59 @@ hazrisk = ["py.typed"]
 
 [tool.ruff]
 target-version = "py312"
+line-length = 88
+
+# Rules are listed explicitly so the result does not depend on the defaults of
+# whichever ruff version is installed.
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade, for the py312 syntax
+    "B",    # bugbear
+    "NPY",  # numpy-specific
+    "RUF",  # ruff-specific
+]
+# __all__ lists the functions in the order the docs present them, not
+# alphabetically.
+ignore = ["RUF022"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 files = ["src"]
+# So `mypy tests` resolves `import hazrisk` to the source, not an editable
+# install's import hook (which mypy cannot follow).
+mypy_path = "src"
+
+# scipy ships no type information (the separate scipy-stubs package would add
+# it); without this override every scipy import is an error under --strict.
+[[tool.mypy.overrides]]
+module = ["scipy", "scipy.*"]
+ignore_missing_imports = true
+
+# The tests get plain (non-strict) mypy: the strict flags are switched back
+# off. Test functions and pytest fixtures are left unannotated, which is the
+# norm for pytest code; their bodies are still checked (check_untyped_defs).
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+strict = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+warn_return_any = false
+check_untyped_defs = true
+# hazrisk returns `float | ndarray` (a float for scalar input). The tests know
+# when they passed arrays and index or call methods on the result, which mypy
+# cannot see, so these three codes are off for the tests only.
+disable_error_code = ["index", "union-attr", "operator"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# The doctests in the docstrings run together with the tests.
+testpaths = ["tests", "src/hazrisk"]
+# importlib mode leaves sys.path alone, so `import hazrisk` always finds the
+# installed package (editable or not), never src/ by the back door.
+addopts = ["--doctest-modules", "--import-mode=importlib"]
