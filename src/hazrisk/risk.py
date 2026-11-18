@@ -61,30 +61,137 @@ def mafe_first_order(theta_c: scalar, k0: scalar, k1: scalar, beta: scalar
     return k0 * theta_c ** (-k1) * np.exp(0.5 * (beta * k1) ** 2)
 
 
+def _count(bad) -> str:
+    """'n of m element(s)' for an error message about an array condition."""
+    bad = np.asarray(bad)
+    return f"{int(bad.sum())} of {bad.size} element(s)"
+
+
+def _check_p_denominator(k2, beta):
+    """Return ``1 + 2 k2 beta^2``, raising if it is not positive anywhere.
+
+    The second-order solutions take the square root of ``p``, the reciprocal
+    of this quantity, and are derived for ``p > 0``. Without the check a
+    non-positive value gives ``nan`` (or ``inf``) silently. One bad element
+    raises for the whole call, so a partly valid result is never returned.
+    """
+    denominator = 1 + 2 * k2 * beta ** 2
+    bad = np.asarray(denominator <= 0)
+    if bad.any():
+        raise ValueError(
+            "the second-order solutions need 1 + 2*k2*beta**2 > 0, but it is "
+            f"<= 0 for {_count(bad)}")
+    return denominator
+
+
 def p_second_order(k2: scalar, beta: scalar) -> scalar:
-    """Calculate the p factor for second order risk approximation."""
+    """Calculate the p factor for second order risk approximation.
+
+    Raises ``ValueError`` if ``1 + 2 k2 beta^2 <= 0`` for any element.
+    """
     k2, beta = as_float(k2), as_float(beta)
-    return 1 / (1 + 2 * k2 * beta ** 2)
+    return 1 / _check_p_denominator(k2, beta)
 
 
-def required_capacity_second_order(target_mafe: scalar, k0: scalar, k1: scalar, 
+def required_capacity_second_order(target_mafe: scalar, k0: scalar, k1: scalar,
                                    k2: scalar, beta: scalar) -> scalar:
-    """Calculate theta_c from mean annual frequency of exceedance for the 
-    second order hazard."""
+    r"""Median capacity that gives a target MAFE on the second-order hazard.
+
+    The inverse of :func:`mafe_second_order` (Vamvatsikos 2013). Taking logs
+    of the closed form
+
+    .. math::
+
+        \lambda = \sqrt{p}\, k_0^{1-p}\, H(\theta_c)^p
+                  \exp\left(\tfrac{1}{2} p k_1^2 \beta^2\right),
+        \qquad
+        \ln H(\theta_c) = \ln k_0 - k_1 x - k_2 x^2,
+        \qquad x = \ln \theta_c,
+
+    and writing :math:`L = \ln\left(\lambda / (k_0 \sqrt{p})\right)` gives
+    a quadratic in :math:`x`,
+
+    .. math::
+
+        k_2 x^2 + k_1 x + \left(\frac{L}{p} - \tfrac{1}{2} k_1^2 \beta^2\right) = 0,
+
+    with discriminant (using :math:`1/p = 1 + 2 k_2 \beta^2`)
+
+    .. math::
+
+        D = \frac{k_1^2 - 4 k_2 L}{p}.
+
+    The root that tends to the first-order answer as :math:`k_2 \to 0` is
+    :math:`x = (-k_1 + \sqrt{D}) / (2 k_2)`. Written like that it divides
+    by :math:`k_2`: it fails at :math:`k_2 = 0` and loses accuracy for small
+    :math:`k_2`, where :math:`\sqrt{D}` is close to :math:`k_1` and the
+    numerator cancels. Multiplying numerator and denominator by
+    :math:`k_1 + \sqrt{D}` removes the division (since
+    :math:`D - k_1^2 = 2 k_2 (k_1^2 \beta^2 - 2L/p)`):
+
+    .. math::
+
+        x = \frac{k_1^2 \beta^2 - 2L/p}{k_1 + \sqrt{D}}
+          = \frac{\tfrac{1}{2} k_1 \beta^2 - L / (p k_1)}
+                 {(k_1 + \sqrt{D}) / (2 k_1)}.
+
+    The second form is the one evaluated. At :math:`k_2 = 0`, :math:`p = 1`,
+    :math:`\sqrt{D} = k_1` and the denominator is exactly one, so the result
+    is exactly :func:`required_capacity_first_order`.
+
+    Raises ``ValueError`` if ``1 + 2 k2 beta^2 <= 0``, or if ``D < 0``, which
+    means the fitted second-order curve never reaches the target MAFE, for any
+    element.
+    """
+    target_mafe, k0, k1, k2, beta = (as_float(a)
+                                     for a in (target_mafe, k0, k1, k2, beta))
     p = p_second_order(k2, beta)
-    return np.exp((1 / (2 * k2)) * (-k1 + np.sqrt((k1 ** 2 / p) - (4 * k2 / p) \
-                * np.log(target_mafe / (k0 * np.sqrt(p))))))
+    L = np.log(target_mafe / (k0 * np.sqrt(p)))
+    D = k1 ** 2 / p - 4 * k2 / p * L
+    bad = np.asarray(D < 0)
+    if bad.any():
+        raise ValueError(
+            "the target MAFE is out of reach of the second-order solution "
+            "(negative discriminant k1**2/p - 4*k2*L/p) for " + _count(bad))
+    return np.exp((0.5 * k1 * beta ** 2 - L / (p * k1))
+                  / ((k1 + np.sqrt(D)) / (2 * k1)))
 
 
 def mafe_second_order(theta_c: scalar, k0: scalar, k1: scalar, k2: scalar, 
                       beta: scalar) -> scalar:
-    """Calculate mean annual frequency of collapse for second order hazard."""
+    """Calculate mean annual frequency of collapse for second order hazard.
+
+    Raises ``ValueError`` if ``1 + 2 k2 beta^2 <= 0`` for any element.
+    """
     theta_c, k0, k1, k2, beta = (as_float(a)
                                  for a in (theta_c, k0, k1, k2, beta))
     p = p_second_order(k2, beta)
     H_theta = haz.second_order_approx(theta_c, k0, k1, k2)
     return np.sqrt(p) * k0 ** (1 - p) * H_theta ** p * \
                np.exp(0.5 * p * k1 ** 2 * beta **2)
+
+
+def _check_tabulated(H_im, fragility) -> None:
+    """Check a tabulated hazard curve and the fragility evaluated on it.
+
+    The numerical integration assumes the levels are ordered by increasing
+    ``im``; if they are reversed the trapezoid sum changes sign and a negative
+    MAFE comes out without complaint. Equal neighbours are allowed: OpenQuake
+    curves often end in a run of zeros.
+    """
+    if np.ndim(H_im) != 1:
+        raise ValueError(f"H_im must be one-dimensional, got shape "
+                         f"{np.shape(H_im)}")
+    increasing = np.diff(H_im) > 0
+    if increasing.any():
+        raise ValueError(
+            "H_im must not increase: order the levels by increasing im, so "
+            f"H_im decreases; it increases at {int(increasing.sum())} of its "
+            f"{increasing.size} steps")
+    if np.ndim(fragility) == 0 or np.shape(fragility)[-1] != np.size(H_im):
+        raise ValueError(
+            f"the last axis of fragility (shape {np.shape(fragility)}) must "
+            f"have the length of H_im ({np.size(H_im)})")
 
 
 def numerical_mafe(H_im: vector, fragility: vector) -> scalar:
@@ -147,9 +254,18 @@ def numerical_mafe(H_im: vector, fragility: vector) -> scalar:
     -------
     scalar or vector
         The mean annual frequency of collapse, one per fragility curve.
+
+    Raises
+    ------
+    ValueError
+        If ``H_im`` is not one-dimensional or increases anywhere (equal
+        neighbours, such as a run of zeros at the end of an OpenQuake curve,
+        are allowed), or if the last axis of ``fragility`` does not have the
+        length of ``H_im``.
     """
     H_im = as_float(H_im)
     fragility = as_float(fragility)
+    _check_tabulated(H_im, fragility)
     # -trapz because H_im decreases with im; add the tail beyond the last level.
     return (-np.trapezoid(fragility, H_im, axis=-1)
             + H_im[-1] * fragility[..., -1])
@@ -289,95 +405,212 @@ def risk_contribution_pchip(iml: scalar|vector, theta_c: scalar, im: vector,
     return contribution
 
 
-def risk_contribution(im: scalar|vector, H_im: vector, fragility: vector,  
-                      normalised: bool=True) -> scalar|vector:
-    """Calculate the risk contribution using the left Riemann Sum.
-    -- fragility: fragility curve values
-    -- dH_dx: derivative of the hazard curve
-    -- step: constant im step assumed for im values corresponding to the 
-             fragility curve and dH_dx
-    -- mafe: mean annual frequency of exceedance of limit state
+def risk_contribution(im: vector, H_im: vector, fragility: vector,
+                      normalised: bool = True) -> vector:
+    r"""Share of the collapse risk that comes from each tabulated level.
+
+    The discrete counterpart of :func:`risk_contribution_pchip`. It splits the
+    trapezoid sum of :func:`numerical_mafe` into its terms, so the
+    contributions add up to that MAFE. For ``n`` levels ordered by
+    increasing ``im``, with :math:`H_i` the hazard and :math:`P_i` the
+    fragility at level ``i``:
+
+    - element ``i`` (for ``i = 0 ... n-2``) is the risk from the interval
+      between level ``i`` and level ``i+1``,
+
+      .. math::
+
+          \Delta\lambda_i = \tfrac{1}{2} (P_i + P_{i+1}) (H_i - H_{i+1}),
+
+      i.e. the fraction of the year's ground motions that fall in that
+      interval (:math:`H_i - H_{i+1}`) times the average probability of
+      collapse over it;
+    - the last element is the tail term :math:`H_{n-1} P_{n-1}`, the risk
+      from every intensity above the last level, with the fragility held at
+      its last value (as in :func:`numerical_mafe`).
+
+    So the result has one value per level, and
+
+    .. math::
+
+        \sum_i \Delta\lambda_i = \texttt{numerical\_mafe(H\_im, fragility)}
+
+    up to floating-point rounding. Plotted as bars against ``im``, element
+    ``i`` sits on the interval starting at ``im[i]``; it is approximately the
+    integral of :func:`risk_contribution_pchip` over that interval in
+    ``ln(im)``.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels, ordered by increasing ``im``. Used only to
+        check the ordering.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (non-increasing).
+    fragility : vector
+        Probability of collapse at each ``im``. Shape ``(n,)`` for one
+        fragility curve, or ``(..., n)`` for a stack of curves on the same
+        hazard.
+    normalised : bool, optional
+        If True (the default) divide by the total, so the contributions add
+        up to one. If False return them in units of the MAFE (per year).
+
+    Returns
+    -------
+    vector
+        The contributions, with the shape of ``fragility``.
+
+    Raises
+    ------
+    ValueError
+        If ``im`` is not strictly increasing, ``H_im`` increases anywhere, or
+        the lengths of ``im``, ``H_im`` and the last axis of ``fragility``
+        differ.
     """
     im, H_im, fragility = (as_float(a)
                            for a in (im, H_im, fragility))
+    if np.ndim(im) != 1 or np.size(im) != np.size(H_im):
+        raise ValueError(f"im must be one-dimensional with the length of H_im "
+                         f"({np.size(H_im)}), got shape {np.shape(im)}")
+    if np.any(np.diff(im) <= 0):
+        raise ValueError("im must be strictly increasing")
+    _check_tabulated(H_im, fragility)
 
-    dim = np.diff(im)
-    dH = np.diff(H_im)
-    dH_dim = dH / dim
+    # Trapezoid terms of the integral over the hazard, one per interval, then
+    # the tail beyond the last level: the same terms numerical_mafe sums.
+    intervals = 0.5 * (fragility[..., :-1] + fragility[..., 1:]) * (
+        H_im[:-1] - H_im[1:])
+    tail = H_im[-1] * fragility[..., -1:]
+    contributions = np.concatenate([intervals, tail], axis=-1)
 
-    contributions = fragility[:len(dH_dim)] * np.abs(dH_dim) * dim
-    contributions = np.append(contributions, fragility[-1] * H_im[-1])
-    
     if normalised:
-        mafe = sum(contributions)
-        return contributions / mafe
-    return
+        return contributions / contributions.sum(axis=-1, keepdims=True)
+    return contributions
 
 
 def risk_ratio_first_order(
-        R_theta: scalar|vector, k1:scalar|vector, 
-        beta_1: scalar|vector|None, R_beta: scalar|vector=1
-        ) -> np.ndarray:
-    """ calculate the risk ratio between two median capacities for the first order hazard
-    
-    Any of them can be vector, in which case the output is a multidimensional array with the same shape as the broadcasted inputs.
+        R_theta: scalar | vector, k1: scalar | vector,
+        beta_1: scalar | vector, R_beta: scalar | vector = 1,
+) -> scalar | vector:
+    r"""Ratio of the MAFEs of two designs, on the first-order hazard.
 
-    R_theta: scalar|vector (n) - ratio of median capacities (theta_2/theta_1)
-    k1: scalar|vector (m) - first order hazard exponent
-    beta_1: scalar|vector (p) - standard deviation of the first order hazard
-    R_beta: scalar|vector (q) - ratio of median fragilities
-    
+    Two lognormal fragilities, with medians :math:`\theta_1, \theta_2` and
+    dispersions :math:`\beta_1, \beta_2`, on the same first-order hazard
+    curve. Dividing the closed form of Cornell et al. (2002) (see
+    :func:`mafe_first_order`) for case 2 by that for case 1, :math:`k_0`
+    cancels and
 
-    Returns:
+    .. math::
+
+        R_\lambda = \frac{\lambda_2}{\lambda_1}
+                   = R_\theta^{-k_1}
+                     \exp\left(\tfrac{1}{2} k_1^2 \beta_1^2 (R_\beta^2 - 1)\right),
+
+    with :math:`R_\theta = \theta_2 / \theta_1` and
+    :math:`R_\beta = \beta_2 / \beta_1`.
+
+    The inputs broadcast against each other by the usual numpy rules:
+    scalars give a scalar. For the full grid of every combination, give
+    each input its own axis with :func:`numpy.ix_`.
+
+    Parameters
+    ----------
+    R_theta : scalar or vector
+        Ratio of median capacities, :math:`\theta_2 / \theta_1`.
+    k1 : scalar or vector
+        Exponent of the first-order hazard curve.
+    beta_1 : scalar or vector
+        Dispersion of the reference (case 1) fragility.
+    R_beta : scalar or vector, optional
+        Ratio of dispersions, :math:`\beta_2 / \beta_1`. The default of one
+        means the two fragilities have the same dispersion.
+
+    Returns
     -------
-    R_lambda: scalar|np.ndarray shape(n, m, p, q) - ratio of mean annual frequencies of exceedance (lambda_2/lambda_1)
+    scalar or vector
+        :math:`R_\lambda = \lambda_2 / \lambda_1`, with the broadcast shape
+        of the inputs.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from hazrisk import risk
+    >>> R_lambda = risk.risk_ratio_first_order(1.2, 2.5, 0.4)
+    >>> round(float(R_lambda), 4)
+    0.6339
+    >>> grid = risk.risk_ratio_first_order(
+    ...     *np.ix_([0.9, 1.0, 1.1], [2.0, 3.0], [0.2, 0.4], [1.0, 1.5]))
+    >>> grid.shape
+    (3, 2, 2, 2)
     """
-
-    R_theta = np.asarray(R_theta, dtype=float)
-    k1 = np.asarray(k1, dtype=float)
-    beta_1 = np.asarray(beta_1, dtype=float)
-    R_beta = np.asarray(R_beta, dtype=float)
-
-    R_theta_4d = np.expand_dims(R_theta, axis=(1, 2, 3))
-    k1_4d = np.expand_dims(k1, axis=(0, 2, 3))
-    beta_1_4d = np.expand_dims(beta_1, axis=(0, 1, 3))
-    R_beta_4d = np.expand_dims(R_beta, axis=(0, 1, 2))
-
-    R_lambda = R_theta_4d ** (-k1_4d) * np.exp(0.5 * k1_4d ** 2 * (R_beta_4d ** 2 - 1) * beta_1_4d ** 2)
-
-    return R_lambda
+    R_theta, k1, beta_1, R_beta = (as_float(a)
+                                   for a in (R_theta, k1, beta_1, R_beta))
+    return R_theta ** (-k1) * np.exp(
+        0.5 * k1 ** 2 * (R_beta ** 2 - 1) * beta_1 ** 2)
 
 
 def theta_ratio_first_order(
-        R_lambda: scalar|vector, k1:scalar|vector, 
-        beta_1: scalar|vector|None, R_beta: scalar|vector=1
-        ) -> np.ndarray:
-    """ calculate the ratio of median capacities to achieve a desired change in risk level
-    using the first order hazard approximation.
-    
-    Any of them can be vector, in which case the output is a multidimensional array with the same shape as the broadcasted inputs.
+        R_lambda: scalar | vector, k1: scalar | vector,
+        beta_1: scalar | vector, R_beta: scalar | vector = 1,
+) -> scalar | vector:
+    r"""Ratio of median capacities that gives a target ratio of MAFEs.
 
-    R_lambda: scalar|vector (n) - ratio of mean annual frequencies of exceedance (lambda_2/lambda_1)
-    k1: scalar|vector (m) - first order hazard exponent
-    beta_1: scalar|vector (p) - standard deviation of the first order hazard
-    R_beta: scalar|vector (q) - ratio of median fragilities
-    
+    The inverse of :func:`risk_ratio_first_order`: how much the median
+    capacity has to change, :math:`R_\theta = \theta_2 / \theta_1`, for
+    the MAFE to change by :math:`R_\lambda = \lambda_2 / \lambda_1`, on the
+    first-order hazard curve (Cornell et al. 2002). Solving the ratio of the
+    two closed forms for :math:`R_\theta`,
 
-    Returns:
+    .. math::
+
+        R_\theta = \exp\left(\tfrac{1}{2} k_1 \beta_1^2 (R_\beta^2 - 1)
+                    - \frac{\ln R_\lambda}{k_1}\right),
+
+    with :math:`R_\beta = \beta_2 / \beta_1`.
+
+    The inputs broadcast against each other by the usual numpy rules:
+    scalars give a scalar. For the full grid of every combination, give
+    each input its own axis with :func:`numpy.ix_`.
+
+    Parameters
+    ----------
+    R_lambda : scalar or vector
+        Target ratio of MAFEs, :math:`\lambda_2 / \lambda_1`.
+    k1 : scalar or vector
+        Exponent of the first-order hazard curve.
+    beta_1 : scalar or vector
+        Dispersion of the reference (case 1) fragility.
+    R_beta : scalar or vector, optional
+        Ratio of dispersions, :math:`\beta_2 / \beta_1`. The default of one
+        means the two fragilities have the same dispersion.
+
+    Returns
     -------
-    R_theta: scalar|np.ndarray shape(n, m, p, q) - ratio of median capacities (theta_2/theta_1)
+    scalar or vector
+        :math:`R_\theta = \theta_2 / \theta_1`, with the broadcast shape of
+        the inputs.
+
+    Examples
+    --------
+    Halving the MAFE with the same dispersion, for ``k1 = 2.5``:
+
+    >>> import numpy as np
+    >>> from hazrisk import risk
+    >>> round(float(risk.theta_ratio_first_order(0.5, 2.5, 0.4)), 4)
+    1.3195
+
+    Every combination of four input vectors, as a 4-D array with one axis
+    per input:
+
+    >>> R_lambda = np.linspace(0.5, 2.0, 16)
+    >>> k1 = [1.5, 2.0, 2.5, 3.0]
+    >>> beta_1 = [0.15, 0.2, 0.25, 0.4, 0.5]
+    >>> R_beta = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0]
+    >>> R_theta = risk.theta_ratio_first_order(*np.ix_(R_lambda, k1, beta_1, R_beta))
+    >>> R_theta.shape
+    (16, 4, 5, 6)
     """
-
-    R_lambda = np.asarray(R_lambda, dtype=float)
-    k1 = np.asarray(k1, dtype=float)
-    beta_1 = np.asarray(beta_1, dtype=float)
-    R_beta = np.asarray(R_beta, dtype=float)
-
-    R_lambda_4d = np.expand_dims(R_lambda, axis=(1, 2, 3))
-    k1_4d = np.expand_dims(k1, axis=(0, 2, 3))
-    beta_1_4d = np.expand_dims(beta_1, axis=(0, 1, 3))
-    R_beta_4d = np.expand_dims(R_beta, axis=(0, 1, 2))
-
-    R_theta = np.exp(0.5 * k1_4d * (R_beta_4d ** 2 - 1) * beta_1_4d ** 2 - np.log(R_lambda_4d) / k1_4d)
-
-    return R_theta
+    R_lambda, k1, beta_1, R_beta = (as_float(a)
+                                    for a in (R_lambda, k1, beta_1, R_beta))
+    return np.exp(0.5 * k1 * (R_beta ** 2 - 1) * beta_1 ** 2
+                  - np.log(R_lambda) / k1)
