@@ -1,22 +1,65 @@
+"""Hazard curves: analytical approximations, interpolation and conversions.
+
+The hazard curve is the first link of the hazard -> fragility -> risk chain:
+``H(im)`` is the mean annual frequency of exceeding each level of an intensity
+measure ``im`` (for example spectral acceleration). This module provides
+
+- the first-order (power law, Cornell et al. 2002) and second-order
+  (log-quadratic, Vamvatsikos 2013) approximations of ``H(im)`` and their
+  derivatives, which the closed-form solutions in :mod:`hazrisk.risk` need;
+- functions that fit those approximations to a numerical hazard curve, either
+  through chosen points or by regression over a band of the curve;
+- PCHIP interpolation of a numerical hazard curve in log-log space, used by
+  the numerical risk integration in :mod:`hazrisk.risk`;
+- conversions between probability of exceedance in ``t`` years, mean annual
+  frequency of exceedance and return period.
+
+Tabulated curves (``im``, ``H_im``) must be ordered by increasing ``im``, so
+``H_im`` decreases along the array.
+"""
+
 import numpy as np
 from scipy.interpolate import PchipInterpolator
-from hazrisk._typing import scalar, vector
+
+from hazrisk._typing import as_float, scalar, vector
+
+# The public interface of the module, in the order the docs list it.
+__all__ = [
+    "first_order_approx",
+    "first_order_dHdx",
+    "second_order_approx",
+    "second_order_dHdx",
+    "poe_to_mafe",
+    "mafe_to_poe",
+    "poe_to_rtp",
+    "fit_first_order_points",
+    "fit_second_order_points",
+    "fit_first_order_regression",
+    "fit_second_order_regression",
+    "pchip_interpolant",
+    "pchip_approx",
+    "pchip_dHdx",
+]
 
 def first_order_approx(im: scalar|vector, k0: scalar, k1: scalar
                        ) -> scalar|vector:
     """First order hazard function."""
+    # Cast arrays to float: numpy refuses negative powers of integer arrays.
+    im, k0, k1 = (as_float(a) for a in (im, k0, k1))
     return k0 * im ** (-k1)
 
 
 def first_order_dHdx(im: scalar|vector, k0: scalar, k1: scalar
                      ) -> scalar|vector:
     """Derivative of the first order hazard function."""
+    im, k0, k1 = (as_float(a) for a in (im, k0, k1))
     return -k0 * k1 * im ** (-k1 - 1)
 
 
 def second_order_approx(im: scalar|vector, k0: scalar, k1: scalar, k2: scalar
                         ) -> scalar|vector:
     """Second order hazard function."""
+    im, k0, k1, k2 = (as_float(a) for a in (im, k0, k1, k2))
     return k0 * np.exp(-k2 * np.log(im) ** 2 - k1 * np.log(im))
 
 
@@ -26,23 +69,27 @@ def second_order_dHdx(im: scalar|vector, k0: scalar, k1: scalar, k2: scalar
     --> derived using the chain rule with:
                     g(s) = -k2 * log(s) ** 2 - k1 * log(s)
     """
+    im, k0, k1, k2 = (as_float(a) for a in (im, k0, k1, k2))
     return -(2 * k2 * np.log(im) + k1) / im * second_order_approx(im, k0, k1, k2)
 
 
 def poe_to_mafe(poe: scalar|vector, t: scalar=1) -> float:
     """ converts probability of exceedance in time span `t` to mean annual
     frequency of exceedance"""
+    poe, t = as_float(poe), as_float(t)
     return -np.log(1-poe) / t
 
 
 def mafe_to_poe(mafe: scalar|vector, t:scalar=1) -> float:
     """ converts mean annual frequency of exceedance to
     probability of exceedance in time span `t` """
+    mafe, t = as_float(mafe), as_float(t)
     return 1 - np.exp((-mafe * t))
 
 
 def poe_to_rtp(poe: scalar|vector, t: scalar=1) -> float:
     """ converts probability of exceedance in time span `t` to mean return period"""
+    # poe_to_mafe casts the inputs to float.
     return 1 / poe_to_mafe(poe, t)
 
 
@@ -447,8 +494,74 @@ def _trim_zero_tail(im: vector, H_im: vector) -> tuple[vector, vector]:
     return im[:positive[-1] + 1], H_im[:positive[-1] + 1]
 
 
-def _pchip_log_log(im: vector, H_im: vector) -> PchipInterpolator:
-    """PCHIP interpolant of ``ln(H)`` against ``ln(im)``, validated and trimmed."""
+def pchip_interpolant(im: vector, H_im: vector) -> PchipInterpolator:
+    r"""PCHIP interpolant of a numerical hazard curve in log-log space.
+
+    Returns the piecewise cubic Hermite interpolating polynomial (PCHIP;
+    Fritsch & Carlson 1980) ``f`` of ``ln(H)`` against ``ln(im)``, so that
+
+    .. math::
+
+        H(im) = \exp\left(f(\ln im)\right).
+
+    This is the object :func:`pchip_approx`, :func:`pchip_dHdx` and
+    :func:`hazrisk.risk.numerical_mafe_pchip` evaluate. Building it once and
+    evaluating it many times saves repeating the checks on the curve, and
+    gives access to everything a :class:`scipy.interpolate.PchipInterpolator`
+    offers (derivatives, the breakpoints ``f.x``, and so on).
+
+    The interpolant works in log-log space: its argument is ``ln(im)`` and its
+    value is ``ln(H)``. Use :func:`pchip_approx` for the hazard itself.
+
+    Before the interpolant is built, trailing zeros of ``H_im`` (as OpenQuake
+    writes them above the truncation level of the ground motion model, or
+    below the precision the probability is stored at) are dropped, since
+    ``ln(0)`` is not defined. The rest of the curve must be strictly positive
+    and strictly decreasing, with ``im`` strictly increasing; otherwise a
+    ``ValueError`` is raised.
+
+    The interpolant does not extrapolate: outside ``ln(im[0])`` to ``ln`` of
+    the last level with positive hazard it returns ``nan``.
+
+    The hazard derivative follows from the chain rule. With ``f'`` the first
+    derivative of the interpolant (``f.derivative()``, or ``f(x, 1)``),
+
+    .. math::
+
+        \frac{dH}{d\,im} = H(im) \, \frac{f'(\ln im)}{im},
+
+    which is what :func:`pchip_dHdx` returns.
+
+    Parameters
+    ----------
+    im : vector
+        Intensity measure levels of the numerical hazard curve, ordered by
+        increasing ``im``.
+    H_im : vector
+        Mean annual frequency of exceeding each ``im`` (strictly decreasing
+        apart from a trailing run of zeros).
+
+    Returns
+    -------
+    scipy.interpolate.PchipInterpolator
+        ``f`` with ``ln(H) = f(ln(im))``, built with ``extrapolate=False``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from hazrisk import hazard
+    >>> im = np.array([0.1, 0.2, 0.5, 1.0])
+    >>> H_im = np.array([1e-2, 3e-3, 4e-4, 5e-5])
+    >>> f = hazard.pchip_interpolant(im, H_im)
+    >>> round(float(np.exp(f(np.log(0.2)))), 12)  # the tabulated value
+    0.003
+    >>> x = np.log(0.3)
+    >>> dHdx = np.exp(f(x)) * f(x, 1) / 0.3
+    >>> bool(np.isclose(dHdx, hazard.pchip_dHdx(0.3, im, H_im)))
+    True
+    >>> bool(np.isnan(f(np.log(2.0))))  # outside the curve
+    True
+    """
     im, H_im = _validate_curve(*_trim_zero_tail(im, H_im))
     return PchipInterpolator(np.log(im), np.log(H_im), extrapolate=False)
 
@@ -477,8 +590,8 @@ def pchip_approx(iml: scalar|vector, im: vector, H_im: vector) -> scalar|vector:
     is already a straight line in log-log space (first order) is reproduced
     exactly everywhere.
 
-    Trailing zeros in ``H_im`` (see :func:`_trim_zero_tail`) are dropped, and
-    the curve is not extrapolated: ``iml`` outside ``im[0]`` to the last
+    The interpolant is :func:`pchip_interpolant`: trailing zeros in ``H_im``
+    are dropped, and the curve is not extrapolated: ``iml`` outside ``im[0]`` to the last
     positive level returns ``nan``.
 
     Parameters
@@ -497,7 +610,8 @@ def pchip_approx(iml: scalar|vector, im: vector, H_im: vector) -> scalar|vector:
     scalar or vector
         The interpolated mean annual frequency of exceeding ``iml``.
     """
-    interpolant = _pchip_log_log(im, H_im)
+    interpolant = pchip_interpolant(im, H_im)
+    iml = np.asarray(iml, dtype=float)
     return np.exp(interpolant(np.log(iml)))
 
 
@@ -529,6 +643,8 @@ def pchip_dHdx(iml: scalar|vector, im: vector, H_im: vector) -> scalar|vector:
         The derivative of the mean annual frequency of exceedance with respect
         to ``im``, at ``iml``.
     """
-    interpolant = _pchip_log_log(im, H_im)
+    interpolant = pchip_interpolant(im, H_im)
+    iml = np.asarray(iml, dtype=float)
     x = np.log(iml)
-    return np.exp(interpolant(x)) * interpolant(x, 1) / np.asarray(iml)
+    # Chain rule on ln(H) = f(ln(im)): dH/d(im) = H * f'(ln im) / im.
+    return np.exp(interpolant(x)) * interpolant(x, 1) / iml

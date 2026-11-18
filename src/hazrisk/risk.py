@@ -1,24 +1,69 @@
+"""Risk: the mean annual frequency of a limit state, and related quantities.
+
+This is the last link of the hazard -> fragility -> risk chain. It combines a
+hazard curve (:mod:`hazrisk.hazard`) with a fragility curve
+(:mod:`hazrisk.fragility`) to give the mean annual frequency of exceeding a
+limit state such as collapse (MAFE of the limit state, often written
+``lambda_C``). It provides
+
+- the SAC/FEMA closed-form solutions for a lognormal fragility on the
+  first-order (Cornell et al. 2002) and second-order (Vamvatsikos 2013)
+  hazard approximations, in both directions: capacity -> MAFE (``mafe_*``)
+  and target MAFE -> required median capacity (``required_capacity_*``);
+- numerical integration of a fragility against a tabulated hazard curve
+  (``numerical_mafe``, ``numerical_mafe_pchip``);
+- where the risk comes from (``risk_contribution``,
+  ``risk_contribution_pchip``);
+- first-order ratios between two designs (``risk_ratio_first_order``,
+  ``theta_ratio_first_order``).
+
+Tabulated inputs must be ordered by increasing ``im``, so ``H_im`` decreases
+along the array; the numerical integration relies on it.
+"""
+
 import numpy as np
+
 from hazrisk import hazard as haz
+from hazrisk._typing import as_float, scalar, vector
 from hazrisk.fragility import lognormal_fragility_curve
-from hazrisk._typing import scalar, vector
+
+# The public interface of the module, in the order the docs list it.
+__all__ = [
+    "mafe_first_order",
+    "required_capacity_first_order",
+    "p_second_order",
+    "mafe_second_order",
+    "required_capacity_second_order",
+    "numerical_mafe",
+    "numerical_mafe_pchip",
+    "risk_contribution",
+    "risk_contribution_pchip",
+    "risk_ratio_first_order",
+    "theta_ratio_first_order",
+]
 
 
 def required_capacity_first_order(target_mafe: scalar, k0: scalar, k1: scalar,
                                   beta: scalar) -> scalar:
     """Calculate theta_c from mean annual frequency of exceedance for first order 
     hazard."""
+    target_mafe, k0, k1, beta = (as_float(a)
+                                 for a in (target_mafe, k0, k1, beta))
     return np.exp((0.5 * k1 * beta ** 2) - (np.log(target_mafe / k0) / k1))
 
 
 def mafe_first_order(theta_c: scalar, k0: scalar, k1: scalar, beta: scalar
                      ) -> scalar:
     """Calculate mean annual frequency of collapse for first order hazard."""
+    # Cast arrays to float: numpy refuses negative powers of integer arrays.
+    theta_c, k0, k1, beta = (as_float(a)
+                             for a in (theta_c, k0, k1, beta))
     return k0 * theta_c ** (-k1) * np.exp(0.5 * (beta * k1) ** 2)
 
 
 def p_second_order(k2: scalar, beta: scalar) -> scalar:
     """Calculate the p factor for second order risk approximation."""
+    k2, beta = as_float(k2), as_float(beta)
     return 1 / (1 + 2 * k2 * beta ** 2)
 
 
@@ -34,6 +79,8 @@ def required_capacity_second_order(target_mafe: scalar, k0: scalar, k1: scalar,
 def mafe_second_order(theta_c: scalar, k0: scalar, k1: scalar, k2: scalar, 
                       beta: scalar) -> scalar:
     """Calculate mean annual frequency of collapse for second order hazard."""
+    theta_c, k0, k1, k2, beta = (as_float(a)
+                                 for a in (theta_c, k0, k1, k2, beta))
     p = p_second_order(k2, beta)
     H_theta = haz.second_order_approx(theta_c, k0, k1, k2)
     return np.sqrt(p) * k0 ** (1 - p) * H_theta ** p * \
@@ -101,6 +148,8 @@ def numerical_mafe(H_im: vector, fragility: vector) -> scalar:
     scalar or vector
         The mean annual frequency of collapse, one per fragility curve.
     """
+    H_im = as_float(H_im)
+    fragility = as_float(fragility)
     # -trapz because H_im decreases with im; add the tail beyond the last level.
     return (-np.trapezoid(fragility, H_im, axis=-1)
             + H_im[-1] * fragility[..., -1])
@@ -249,6 +298,8 @@ def risk_contribution(im: scalar|vector, H_im: vector, fragility: vector,
              fragility curve and dH_dx
     -- mafe: mean annual frequency of exceedance of limit state
     """
+    im, H_im, fragility = (as_float(a)
+                           for a in (im, H_im, fragility))
 
     dim = np.diff(im)
     dH = np.diff(H_im)
@@ -282,10 +333,10 @@ def risk_ratio_first_order(
     R_lambda: scalar|np.ndarray shape(n, m, p, q) - ratio of mean annual frequencies of exceedance (lambda_2/lambda_1)
     """
 
-    R_theta = np.asarray(R_theta)
-    k1 = np.asarray(k1)
-    beta_1 = np.asarray(beta_1)
-    R_beta = np.asarray(R_beta)
+    R_theta = np.asarray(R_theta, dtype=float)
+    k1 = np.asarray(k1, dtype=float)
+    beta_1 = np.asarray(beta_1, dtype=float)
+    R_beta = np.asarray(R_beta, dtype=float)
 
     R_theta_4d = np.expand_dims(R_theta, axis=(1, 2, 3))
     k1_4d = np.expand_dims(k1, axis=(0, 2, 3))
@@ -317,10 +368,10 @@ def theta_ratio_first_order(
     R_theta: scalar|np.ndarray shape(n, m, p, q) - ratio of median capacities (theta_2/theta_1)
     """
 
-    R_lambda = np.array(R_lambda)
-    k1 = np.array(k1)
-    beta_1 = np.array(beta_1)
-    R_beta = np.array(R_beta)
+    R_lambda = np.asarray(R_lambda, dtype=float)
+    k1 = np.asarray(k1, dtype=float)
+    beta_1 = np.asarray(beta_1, dtype=float)
+    R_beta = np.asarray(R_beta, dtype=float)
 
     R_lambda_4d = np.expand_dims(R_lambda, axis=(1, 2, 3))
     k1_4d = np.expand_dims(k1, axis=(0, 2, 3))
