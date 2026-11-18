@@ -1,10 +1,86 @@
+# Build configuration and package metadata for hazrisk.
+#
+# setuptools >= 77 is needed for the SPDX `license` string and
+# `license-files` (PEP 639); older versions want the deprecated licence table.
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "hazrisk"
-version = "0.1.0"
+# The only place the version is written; hazrisk.__version__ and the docs read
+# it from the installed metadata. ".dev0" until the release commit sets 0.1.0.
+version = "0.1.0.dev0"
+description = "Seismic hazard-curve approximation and risk integration (SAC/FEMA closed forms and numerical MAFE)"
+readme = "README.md"
+# 3.12 for the type-alias syntax and the `X | Y` annotations used throughout.
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Nicholas Clemett", email = "nicholas.clemett@hsu-hh.de" }]
+keywords = [
+    "seismic risk",
+    "PSHA",
+    "hazard curve",
+    "fragility",
+    "SAC/FEMA",
+    "MAFE",
+    "earthquake engineering",
+]
+# No licence classifier: the SPDX `license` field above replaces it.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+# Floors only, no upper bounds. numpy 2.0 for np.trapezoid; scipy 1.13 is the
+# first release built against numpy 2.
+dependencies = ["numpy>=2.0", "scipy>=1.13"]
 
-[tool.setuptools]
-packages = ["hazrisk"]
+[project.optional-dependencies]
+# Plotting is never needed by the library itself, only by users' own figures.
+plot = ["matplotlib>=3.8"]
+test = ["pytest>=8"]
+# Floors are the versions the docs were last built and checked with.
+docs = [
+    "sphinx>=9.1",
+    "myst-nb>=1.4",
+    "furo>=2025.12.19",
+    "sphinx-copybutton>=0.5.2",
+    "matplotlib>=3.11",
+]
+# Everything a contributor needs: tests, docs, lint, type checks, packaging.
+dev = ["hazrisk[test,docs]", "ruff", "mypy", "build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/nc-hsu/hazrisk"
+Source = "https://github.com/nc-hsu/hazrisk"
+Documentation = "https://hazrisk.readthedocs.io"
+Issues = "https://github.com/nc-hsu/hazrisk/issues"
+Changelog = "https://github.com/nc-hsu/hazrisk/blob/main/CHANGELOG.md"
+
+# src/ layout: the package is found under src/, so the tests can only import
+# the installed package, never the working tree by accident.
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Ship the PEP 561 marker so type checkers use hazrisk's annotations.
+[tool.setuptools.package-data]
+hazrisk = ["py.typed"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

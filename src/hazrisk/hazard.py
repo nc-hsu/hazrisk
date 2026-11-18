@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.interpolate import PchipInterpolator
-from hazrisk.typedefs import scalar, vector
+from hazrisk._typing import scalar, vector
 
 def first_order_approx(im: scalar|vector, k0: scalar, k1: scalar
                        ) -> scalar|vector:
