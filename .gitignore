@@ -74,6 +74,8 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+# autosummary stubs, regenerated on every docs build
+docs/api/generated/
 
 # PyBuilder
 .pybuilder/

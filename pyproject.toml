@@ -78,6 +78,12 @@ hazrisk = ["py.typed"]
 target-version = "py312"
 line-length = 88
 
+# Don't reformat the Python examples inside Markdown files (README, docs,
+# issue templates): they are laid out for reading, e.g. a hazard curve on one
+# line, and the docs examples run at every docs build anyway.
+[tool.ruff.format]
+exclude = ["*.md"]
+
 # Rules are listed explicitly so the result does not depend on the defaults of
 # whichever ruff version is installed.
 [tool.ruff.lint]
