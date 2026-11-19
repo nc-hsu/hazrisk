@@ -71,7 +71,7 @@ def test_contributions_converge_to_the_closed_form():
     H_im = hazard.second_order_approx(im, K0, K1, K2)
     frag = lognormal_fragility_curve(im, THETA_C, BETA)
     total = risk.risk_contribution(im, H_im, frag, normalised=False).sum()
-    assert total == approx(risk.mafe_second_order(THETA_C, K0, K1, K2, BETA), rel=1e-3)
+    assert total == approx(risk.mafe_second_order(THETA_C, BETA, K0, K1, K2), rel=1e-3)
 
 
 def test_contributions_accept_a_trailing_run_of_zeros(curve):
@@ -88,8 +88,8 @@ def test_contributions_accept_a_trailing_run_of_zeros(curve):
 
 def test_risk_ratio_agrees_with_two_closed_form_mafes():
     theta_1, theta_2, beta_1, beta_2 = 0.3, 0.4, 0.3, 0.45
-    ratio = risk.mafe_first_order(theta_2, K0, K1, beta_2) / risk.mafe_first_order(
-        theta_1, K0, K1, beta_1
+    ratio = risk.mafe_first_order(theta_2, beta_2, K0, K1) / risk.mafe_first_order(
+        theta_1, beta_1, K0, K1
     )
     assert risk.risk_ratio_first_order(
         theta_2 / theta_1, K1, beta_1, beta_2 / beta_1
@@ -147,25 +147,25 @@ def test_ratio_of_one_dimensional_vectors_of_different_lengths_raises():
 def test_second_order_capacity_at_k2_zero_is_exactly_first_order():
     targets = np.array([1e-4, 2e-4, 1e-3])
     assert_array_equal(
-        risk.required_capacity_second_order(targets, K0, K1, 0.0, BETA),
-        risk.required_capacity_first_order(targets, K0, K1, BETA),
+        risk.required_capacity_second_order(targets, BETA, K0, K1, 0.0),
+        risk.required_capacity_first_order(targets, BETA, K0, K1),
     )
     assert risk.required_capacity_second_order(
-        2e-4, K0, K1, 0, BETA
-    ) == risk.required_capacity_first_order(2e-4, K0, K1, BETA)
+        2e-4, BETA, K0, K1, 0
+    ) == risk.required_capacity_first_order(2e-4, BETA, K0, K1)
 
 
 def test_second_order_capacity_is_accurate_for_tiny_k2():
-    first = risk.required_capacity_first_order(2e-4, K0, K1, BETA)
-    assert risk.required_capacity_second_order(2e-4, K0, K1, 1e-12, BETA) == (
+    first = risk.required_capacity_first_order(2e-4, BETA, K0, K1)
+    assert risk.required_capacity_second_order(2e-4, BETA, K0, K1, 1e-12) == (
         approx(first, rel=1e-10)
     )
 
 
 @pytest.mark.parametrize("k2", [1e-8, 1e-4, 0.05, 0.15, 0.4])
 def test_second_order_capacity_inverts_the_closed_form(k2):
-    theta = risk.required_capacity_second_order(2e-4, K0, K1, k2, BETA)
-    assert risk.mafe_second_order(theta, K0, K1, k2, BETA) == approx(2e-4, rel=1e-12)
+    theta = risk.required_capacity_second_order(2e-4, BETA, K0, K1, k2)
+    assert risk.mafe_second_order(theta, BETA, K0, K1, k2) == approx(2e-4, rel=1e-12)
 
 
 # --- ValueErrors --------------------------------------------------------------
@@ -209,8 +209,8 @@ def test_risk_contribution_rejects_length_mismatches(curve):
     "call",
     [
         lambda k2, beta: risk.p_second_order(k2, beta),
-        lambda k2, beta: risk.mafe_second_order(THETA_C, K0, K1, k2, beta),
-        lambda k2, beta: risk.required_capacity_second_order(2e-4, K0, K1, k2, beta),
+        lambda k2, beta: risk.mafe_second_order(THETA_C, beta, K0, K1, k2),
+        lambda k2, beta: risk.required_capacity_second_order(2e-4, beta, K0, K1, k2),
     ],
     ids=["p_second_order", "mafe_second_order", "required_capacity_second_order"],
 )
@@ -226,6 +226,6 @@ def test_non_positive_p_denominator_raises(call):
 def test_unreachable_target_raises():
     # Above the peak of the fitted log-quadratic: no real capacity exists.
     with pytest.raises(ValueError, match=r"out of reach.*1 of 1"):
-        risk.required_capacity_second_order(10.0, K0, K1, 0.5, BETA)
+        risk.required_capacity_second_order(10.0, BETA, K0, K1, 0.5)
     with pytest.raises(ValueError, match=r"out of reach.*1 of 2"):
-        risk.required_capacity_second_order(np.array([2e-4, 10.0]), K0, K1, 0.5, BETA)
+        risk.required_capacity_second_order(np.array([2e-4, 10.0]), BETA, K0, K1, 0.5)

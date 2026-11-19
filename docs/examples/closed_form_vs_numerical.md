@@ -29,7 +29,7 @@ DATA = Path("..") / ".." / "examples" / "data"
 
 
 def load_site(label):
-    """Return (im, H_im) of an example site, as written by OpenQuake."""
+    """Return (im, H_im) of an example site"""
     data = np.loadtxt(DATA / f"site_{label}.csv", delimiter=",", skiprows=1)
     return data[:, 0], data[:, 1]
 
@@ -77,10 +77,10 @@ fig.tight_layout()
 With $\theta_c$ at the 2 % in 50 year level, the risk comes from intensities
 inside the fitted band, and the second-order closed form stays within a few
 per cent of the numerical result on all three sites and for every $\beta$. The
-first-order regression over such a wide band does not pass through the curve
-at $\theta_c$, so it is off even at small $\beta$ (by about a third on site B),
-and its error changes with $\beta$ as the risk moves to intensities where the
-power law and the curve part ways.
+first-order regression over such a wide fitting band does not pass through the 
+actual hazard curve at $\theta_c$, so it is off even at small $\beta$ (by about 
+a third on site B), and its error changes with $\beta$ as the risk moves to 
+intensities where the power law and the curve part ways.
 
 The closed forms are only as good as the fit over the intensities that carry
 the risk. In the {doc}`../quickstart`, with $\theta_c$ = 0.3 g on site B, most
@@ -91,7 +91,8 @@ risk by about a third.
 ## Interpolating the tabulated curve
 
 {func}`~hazrisk.risk.numerical_mafe` integrates the fragility against the
-hazard at whatever levels it is given. On the 25 levels of a PSHA curve that is
+hazard at whatever levels it is given. On the 25 levels of the provided PSHA 
+curves that is
 coarse. Two ways to refine the curve first are straight lines between the
 levels in log-log space, and PCHIP in log-log space (what
 {func}`~hazrisk.risk.numerical_mafe_pchip` does). The relative difference from

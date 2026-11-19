@@ -5,9 +5,8 @@ annual frequency of a structural limit state (for example collapse):
 
 1. :mod:`hazrisk.hazard` -- the hazard curve, i.e. the mean annual frequency
    of exceeding each level of an intensity measure (``im``). It fits the
-   first-order (power law) and second-order (log-quadratic) approximations,
-   interpolates tabulated curves, and converts between probability of
-   exceedance, annual frequency and return period.
+   first-order (power law) and second-order (log-quadratic) approximations
+   and interpolates tabulated curves.
 2. :mod:`hazrisk.fragility` -- the fragility curve, i.e. the probability of
    reaching the limit state given ``im`` (lognormal).
 3. :mod:`hazrisk.risk` -- the risk: the mean annual frequency of the limit
@@ -16,9 +15,13 @@ annual frequency of a structural limit state (for example collapse):
    problem (required capacity for a target frequency) and where the risk
    comes from (risk contribution).
 
-The three modules are the public interface::
+Alongside the chain, :mod:`hazrisk.convert` converts between probability of
+exceedance in a time span, mean annual frequency and return period, for the
+hazard or for the frequency of a limit state.
 
-    from hazrisk import hazard, fragility, risk
+The four modules are the public interface::
+
+    from hazrisk import hazard, fragility, risk, convert
 """
 
 # importlib.metadata reads the version of the installed distribution, so the
@@ -27,8 +30,8 @@ from importlib.metadata import version
 
 # Importing the modules here lets ``import hazrisk`` followed by
 # ``hazrisk.risk...`` work without a separate import of each module.
-from hazrisk import fragility, hazard, risk
+from hazrisk import convert, fragility, hazard, risk
 
 __version__ = version("hazrisk")
 
-__all__ = ["hazard", "fragility", "risk", "__version__"]
+__all__ = ["hazard", "fragility", "risk", "convert", "__version__"]

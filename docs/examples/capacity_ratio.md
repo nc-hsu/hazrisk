@@ -51,6 +51,8 @@ for label in "ABC":
     im, H_im = load_site(label)
     _, k1_sites[label], _ = hazard.fit_first_order_regression(
         im, H_im, mafe_band=(1e-4, 1e-1))
+
+print("k1 values for sites:")
 print({label: round(k1, 2) for label, k1 in k1_sites.items()})
 ```
 
@@ -58,13 +60,13 @@ print({label: round(k1, 2) for label, k1 in k1_sites.items()})
 
 Risk ratios from 1 (no change) down to 0.05 (a twentieth of the risk), the
 three site slopes, three dispersions, and two cases for the dispersion of the
-new design: the same ($R_\beta = 1$) and 20 % smaller ($R_\beta = 0.8$):
+new design: the same ($R_\beta = 1$) and 50 % smaller ($R_\beta = 0.5$):
 
 ```{code-cell} python
 R_lambda = np.geomspace(1, 0.05, 50)
 k1 = np.array(list(k1_sites.values()))
 beta_1 = np.array([0.3, 0.4, 0.5])
-R_beta = np.array([1.0, 0.8])
+R_beta = np.array([1.0, 0.5])
 
 # One axis per input: the result has shape (50, 3, 3, 2).
 R_theta = risk.theta_ratio_first_order(*np.ix_(R_lambda, k1, beta_1, R_beta))

@@ -1,4 +1,4 @@
-r"""Hazard curves: analytical approximations, interpolation and conversions.
+r"""Hazard curves: analytical approximations, fitting and interpolation.
 
 The hazard curve is the first link of the hazard -> fragility -> risk chain:
 :math:`H(im)` is the mean annual frequency of exceeding each level of an
@@ -11,9 +11,10 @@ provides
 - functions that fit those approximations to a numerical hazard curve, either
   through chosen points or by regression over a band of the curve;
 - PCHIP interpolation of a numerical hazard curve in log-log space, used by
-  the numerical risk integration in :mod:`hazrisk.risk`;
-- conversions between probability of exceedance in ``t`` years, mean annual
-  frequency of exceedance and return period.
+  the numerical risk integration in :mod:`hazrisk.risk`.
+
+Conversions between probability of exceedance, mean annual frequency and
+return period are in :mod:`hazrisk.convert`.
 
 Tabulated curves (``im``, ``H_im``) must be ordered by increasing ``im``, so
 ``H_im`` decreases along the array. ``im`` can be in any unit; the hazard is
@@ -32,9 +33,6 @@ __all__ = [
     "first_order_dHdx",
     "second_order_approx",
     "second_order_dHdx",
-    "poe_to_mafe",
-    "mafe_to_poe",
-    "poe_to_rtp",
     "fit_first_order_points",
     "fit_second_order_points",
     "fit_first_order_regression",
@@ -152,12 +150,6 @@ def second_order_approx(
     fit holds over a wider band than the first-order one; with
     :math:`k_2 = 0` it is :func:`first_order_approx`.
 
-    The parabola turns over at :math:`\ln im = -k_1 / (2 k_2)` (for
-    :math:`k_2 > 0`) and the hazard *increases* with ``im`` below that point,
-    which is not physical. That point normally lies well below the fitted
-    band, but the approximation should only be trusted over the band it was
-    fitted to.
-
     Parameters
     ----------
     im : array_like
@@ -174,6 +166,14 @@ def second_order_approx(
     float or ndarray
         Mean annual frequency of exceeding ``im`` (per year), with the
         broadcast shape of the inputs.
+
+    Notes
+    -----
+    The parabola turns over at :math:`\ln im = -k_1 / (2 k_2)` (for
+    :math:`k_2 > 0`): below that point the hazard *increases* with ``im``,
+    which is not physical. This function does not check for it. The point
+    normally lies well below the band the curve was fitted to, and the
+    approximation should only be used over that band.
 
     References
     ----------
@@ -235,128 +235,54 @@ def second_order_dHdx(
 
 
 # ---------------------------------------------------------------------------
-# Probability, frequency and return period
-# ---------------------------------------------------------------------------
-
-
-def poe_to_mafe(poe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
-    r"""Mean annual frequency of exceedance from a probability of exceedance.
-
-    Earthquakes are taken to occur as a Poisson process, so the probability
-    of at least one exceedance in ``t`` years is
-    :math:`P = 1 - e^{-\lambda t}`, and
-
-    .. math::
-
-        \lambda = -\frac{\ln(1 - P)}{t}.
-
-    Parameters
-    ----------
-    poe : array_like
-        Probability of exceedance in ``t`` years, in [0, 1).
-    t : array_like, optional
-        Time span in years (default 1).
-
-    Returns
-    -------
-    float or ndarray
-        Mean annual frequency of exceedance (per year).
-
-    References
-    ----------
-    Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
-    Risk Analysis*. Cambridge University Press.
-
-    Examples
-    --------
-    10 % in 50 years:
-
-    >>> from hazrisk import hazard
-    >>> print(f"{hazard.poe_to_mafe(0.10, t=50):.4e}")
-    2.1072e-03
-    """
-    poe, t = as_float(poe), as_float(t)
-    return -np.log(1 - poe) / t
-
-
-def mafe_to_poe(mafe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
-    r"""Probability of exceedance in ``t`` years from a mean annual frequency.
-
-    The inverse of :func:`poe_to_mafe`, for a Poisson process:
-
-    .. math::
-
-        P = 1 - e^{-\lambda t}.
-
-    Parameters
-    ----------
-    mafe : array_like
-        Mean annual frequency of exceedance (per year, >= 0).
-    t : array_like, optional
-        Time span in years (default 1).
-
-    Returns
-    -------
-    float or ndarray
-        Probability of at least one exceedance in ``t`` years.
-
-    References
-    ----------
-    Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
-    Risk Analysis*. Cambridge University Press.
-
-    Examples
-    --------
-    >>> from hazrisk import hazard
-    >>> print(f"{hazard.mafe_to_poe(1 / 475, t=50):.4f}")
-    0.0999
-    """
-    mafe, t = as_float(mafe), as_float(t)
-    return 1 - np.exp(-mafe * t)
-
-
-def poe_to_rtp(poe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
-    r"""Mean return period from a probability of exceedance in ``t`` years.
-
-    The return period is the reciprocal of the mean annual frequency of
-    exceedance (:func:`poe_to_mafe`):
-
-    .. math::
-
-        T_R = \frac{1}{\lambda} = -\frac{t}{\ln(1 - P)}.
-
-    Parameters
-    ----------
-    poe : array_like
-        Probability of exceedance in ``t`` years, in (0, 1).
-    t : array_like, optional
-        Time span in years (default 1).
-
-    Returns
-    -------
-    float or ndarray
-        Mean return period (years).
-
-    References
-    ----------
-    Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
-    Risk Analysis*. Cambridge University Press.
-
-    Examples
-    --------
-    The familiar design levels, 10 % and 2 % in 50 years:
-
-    >>> from hazrisk import hazard
-    >>> print([round(float(T)) for T in hazard.poe_to_rtp([0.10, 0.02], t=50)])
-    [475, 2475]
-    """
-    # poe_to_mafe casts the inputs to float.
-    return 1 / poe_to_mafe(poe, t)
-
-
-# ---------------------------------------------------------------------------
 # Fitting the approximations to a numerical hazard curve
 # ---------------------------------------------------------------------------
+
+
+def _trim_zero_tail(im: ArrayLike, H_im: ArrayLike) -> tuple[FloatArray, FloatArray]:
+    """Drop the trailing non-positive values of a numerical hazard curve.
+
+    OpenQuake writes a hazard of exactly zero above the truncation ceiling of the
+    ground motion model, and also wherever the probability of exceedance falls
+    below the precision it is stored at. Neither can be represented in log space,
+    so the fitting functions and the PCHIP interpolant cut the curve at its last
+    positive value. Only the *tail* is trimmed: a zero followed by a positive
+    value is not a real hazard curve and is left for :func:`_validate_curve` to
+    reject.
+
+    Parameters
+    ----------
+    im : array_like
+        Intensity measure levels, ordered by increasing ``im``.
+    H_im : array_like
+        Hazard curve values, i.e. the mean annual frequency of exceeding each
+        ``im``.
+
+    Returns
+    -------
+    tuple of ndarray
+        ``im`` and ``H_im`` up to and including the last positive ``H_im``.
+
+    Raises
+    ------
+    ValueError
+        If ``im`` or ``H_im`` is not one-dimensional, their lengths differ, or
+        fewer than two values of ``H_im`` are positive.
+    """
+    im = np.asarray(im, dtype=float)
+    H_im = np.asarray(H_im, dtype=float)
+    # Check the shapes before slicing: cutting both arrays at the same index
+    # would otherwise hide a length mismatch from _validate_curve.
+    if im.ndim != 1 or H_im.ndim != 1:
+        raise ValueError("im and H_im must be one-dimensional")
+    if im.size != H_im.size:
+        raise ValueError(
+            f"im and H_im must be the same length, got {im.size} and {H_im.size}"
+        )
+    positive = np.flatnonzero(H_im > 0)
+    if positive.size < 2:
+        raise ValueError("H_im needs at least two positive values")
+    return im[: positive[-1] + 1], H_im[: positive[-1] + 1]
 
 
 def _validate_curve(im: ArrayLike, H_im: ArrayLike) -> tuple[FloatArray, FloatArray]:
@@ -395,8 +321,8 @@ def _validate_curve(im: ArrayLike, H_im: ArrayLike) -> tuple[FloatArray, FloatAr
         raise ValueError("im must be strictly positive to fit in log space")
     if np.any(H_im <= 0):
         raise ValueError(
-            "H_im must be strictly positive to fit in log space; "
-            "trim the zero-hazard tail of the curve first"
+            "H_im must be strictly positive to fit in log space; only a "
+            "trailing run of zeros is allowed"
         )
     if np.any(np.diff(im) <= 0):
         raise ValueError("im must be strictly increasing")
@@ -596,8 +522,7 @@ def fit_first_order_points(
 
     so two points determine it exactly and the fitted curve passes through
     both. This is the usual way the approximation is anchored in practice:
-    pick the two hazard levels that bracket the limit state of interest. The
-    fit is only trustworthy between (and near) the two anchors.
+    pick the two hazard levels that bracket the limit state of interest.
 
     The points are given either as intensity levels (``iml``) or as mean
     annual frequencies (``mafe``). Points that do not fall on a value of the
@@ -611,7 +536,8 @@ def fit_first_order_points(
         increasing.
     H_im : array_like
         Mean annual frequency of exceeding each ``im`` (per year), strictly
-        positive and strictly decreasing. Trim a zero tail first.
+        positive and strictly decreasing, apart from a trailing run of zeros,
+        which is dropped before fitting.
     iml : array_like, optional
         The two intensity measure levels to fit through.
     mafe : array_like, optional
@@ -626,9 +552,10 @@ def fit_first_order_points(
     Raises
     ------
     ValueError
-        If the curve is not strictly positive and ordered as above, if not
-        exactly one of ``iml`` and ``mafe`` is given, if they do not hold two
-        distinct points, or if a point lies outside the curve.
+        If the curve, without its trailing zeros, is not strictly positive
+        and ordered as above, if not exactly one of ``iml`` and ``mafe`` is
+        given, if they do not hold two distinct points, or if a point lies
+        outside the curve.
 
     References
     ----------
@@ -650,7 +577,9 @@ def fit_first_order_points(
     >>> print(f"k0 = {k0:.3g}, k1 = {k1:.3g}")
     k0 = 0.0001, k1 = 2.5
     """
-    im, H_im = _validate_curve(im, H_im)
+    # Trailing zeros carry no information for a log-log fit; drop them, then
+    # check that what is left is a usable curve.
+    im, H_im = _validate_curve(*_trim_zero_tail(im, H_im))
     x, y = _fitting_points(im, H_im, iml, mafe, 2)
     c0, c1 = _fit_log_log(x, y, 1)
     return float(np.exp(c0)), float(-c1)
@@ -676,11 +605,6 @@ def fit_second_order_points(
     law misses, which is why the anchor points should span the range of
     hazard of interest rather than the whole curve.
 
-    The fitted parabola turns over at :math:`\ln im = -k_1 / (2 k_2)` and the
-    hazard increases with ``im`` below that point, which is not physical.
-    That point normally lies below the fitted range, but the approximation
-    should only be trusted over the range it was fitted to.
-
     Points that do not fall on a value of the supplied curve are interpolated
     linearly in ``ln(im)`` vs ``ln(H)``; points outside the curve raise rather
     than being extrapolated.
@@ -692,7 +616,8 @@ def fit_second_order_points(
         increasing.
     H_im : array_like
         Mean annual frequency of exceeding each ``im`` (per year), strictly
-        positive and strictly decreasing. Trim a zero tail first.
+        positive and strictly decreasing, apart from a trailing run of zeros,
+        which is dropped before fitting.
     iml : array_like, optional
         The three intensity measure levels to fit through.
     mafe : array_like, optional
@@ -707,9 +632,18 @@ def fit_second_order_points(
     Raises
     ------
     ValueError
-        If the curve is not strictly positive and ordered as above, if not
-        exactly one of ``iml`` and ``mafe`` is given, if they do not hold three
-        distinct points, or if a point lies outside the curve.
+        If the curve, without its trailing zeros, is not strictly positive
+        and ordered as above, if not exactly one of ``iml`` and ``mafe`` is
+        given, if they do not hold three distinct points, or if a point lies
+        outside the curve.
+
+    Notes
+    -----
+    The fitted parabola turns over at :math:`\ln im = -k_1 / (2 k_2)` (for
+    :math:`k_2 > 0`): below that point the hazard increases with ``im``, which
+    is not physical. The fit does not check for it. The point normally lies
+    below the fitted range, and the approximation should only be used over
+    the range it was fitted to (see :func:`second_order_approx`).
 
     References
     ----------
@@ -732,7 +666,9 @@ def fit_second_order_points(
     >>> print(f"k0 = {k0:.3g}, k1 = {k1:.3g}, k2 = {k2:.3g}")
     k0 = 0.0001, k1 = 2.5, k2 = 0.2
     """
-    im, H_im = _validate_curve(im, H_im)
+    # Trailing zeros carry no information for a log-log fit; drop them, then
+    # check that what is left is a usable curve.
+    im, H_im = _validate_curve(*_trim_zero_tail(im, H_im))
     x, y = _fitting_points(im, H_im, iml, mafe, 3)
     c0, c1, c2 = _fit_log_log(x, y, 2)
     return float(np.exp(c0)), float(-c1), float(-c2)
@@ -769,7 +705,8 @@ def fit_first_order_regression(
         increasing.
     H_im : array_like
         Mean annual frequency of exceeding each ``im`` (per year), strictly
-        positive and strictly decreasing. Trim a zero tail first.
+        positive and strictly decreasing, apart from a trailing run of zeros,
+        which is dropped before fitting.
     iml_band : tuple of float, optional
         ``(low, high)`` intensity measure bounds of the fitting range,
         inclusive.
@@ -786,8 +723,9 @@ def fit_first_order_regression(
     Raises
     ------
     ValueError
-        If the curve is not strictly positive and ordered as above, if both
-        bands are given, or if the band holds fewer than two levels.
+        If the curve, without its trailing zeros, is not strictly positive
+        and ordered as above, if both bands are given, or if the band holds
+        fewer than two levels.
 
     References
     ----------
@@ -810,7 +748,9 @@ def fit_first_order_regression(
     >>> print(f"k0 = {k0:.3g}, k1 = {k1:.3g}, r2 = {r2:.4f}")
     k0 = 0.000174, k1 = 1.68, r2 = 0.9843
     """
-    im, H_im = _validate_curve(im, H_im)
+    # Trailing zeros carry no information for a log-log fit; drop them, then
+    # check that what is left is a usable curve.
+    im, H_im = _validate_curve(*_trim_zero_tail(im, H_im))
     x, y = _band_points(im, H_im, iml_band, mafe_band, 2)
     coefficients = _fit_log_log(x, y, 1)
     c0, c1 = coefficients
@@ -832,11 +772,6 @@ def fit_second_order_regression(
     hazard curve, so this typically holds over a wider band than the
     first-order fit does.
 
-    The fitted parabola turns over at :math:`\ln im = -k_1 / (2 k_2)` and the
-    hazard increases with ``im`` below that point, which is not physical.
-    That point normally lies below the fitted range, but the approximation
-    should only be trusted over the range it was fitted to.
-
     ``r2`` is the coefficient of determination of the :math:`\ln H` residuals
     (see :func:`fit_first_order_regression`).
 
@@ -847,7 +782,8 @@ def fit_second_order_regression(
         increasing.
     H_im : array_like
         Mean annual frequency of exceeding each ``im`` (per year), strictly
-        positive and strictly decreasing. Trim a zero tail first.
+        positive and strictly decreasing, apart from a trailing run of zeros,
+        which is dropped before fitting.
     iml_band : tuple of float, optional
         ``(low, high)`` intensity measure bounds of the fitting range,
         inclusive.
@@ -864,8 +800,17 @@ def fit_second_order_regression(
     Raises
     ------
     ValueError
-        If the curve is not strictly positive and ordered as above, if both
-        bands are given, or if the band holds fewer than three levels.
+        If the curve, without its trailing zeros, is not strictly positive
+        and ordered as above, if both bands are given, or if the band holds
+        fewer than three levels.
+
+    Notes
+    -----
+    The fitted parabola turns over at :math:`\ln im = -k_1 / (2 k_2)` (for
+    :math:`k_2 > 0`): below that point the hazard increases with ``im``, which
+    is not physical. The fit does not check for it. The point normally lies
+    below the fitted range, and the approximation should only be used over
+    the range it was fitted to (see :func:`second_order_approx`).
 
     References
     ----------
@@ -884,7 +829,9 @@ def fit_second_order_regression(
     >>> print(f"k0 = {k0:.3g}, k1 = {k1:.3g}, k2 = {k2:.3g}, r2 = {r2:.4f}")
     k0 = 0.0001, k1 = 2.5, k2 = 0.2, r2 = 1.0000
     """
-    im, H_im = _validate_curve(im, H_im)
+    # Trailing zeros carry no information for a log-log fit; drop them, then
+    # check that what is left is a usable curve.
+    im, H_im = _validate_curve(*_trim_zero_tail(im, H_im))
     x, y = _band_points(im, H_im, iml_band, mafe_band, 3)
     coefficients = _fit_log_log(x, y, 2)
     c0, c1, c2 = coefficients
@@ -894,37 +841,6 @@ def fit_second_order_regression(
 # ---------------------------------------------------------------------------
 # PCHIP interpolation of a numerical hazard curve
 # ---------------------------------------------------------------------------
-
-
-def _trim_zero_tail(im: ArrayLike, H_im: ArrayLike) -> tuple[FloatArray, FloatArray]:
-    """Drop the trailing non-positive values of a numerical hazard curve.
-
-    OpenQuake writes a hazard of exactly zero above the truncation ceiling of the
-    ground motion model, and also wherever the probability of exceedance falls
-    below the precision it is stored at. Neither can be represented in log space,
-    so the curve is cut at its last positive value. Only the *tail* is trimmed: a
-    zero followed by a positive value is not a real hazard curve and is left for
-    :func:`_validate_curve` to reject.
-
-    Parameters
-    ----------
-    im : array_like
-        Intensity measure levels, ordered by increasing ``im``.
-    H_im : array_like
-        Hazard curve values, i.e. the mean annual frequency of exceeding each
-        ``im``.
-
-    Returns
-    -------
-    tuple of ndarray
-        ``im`` and ``H_im`` up to and including the last positive ``H_im``.
-    """
-    im = np.asarray(im, dtype=float)
-    H_im = np.asarray(H_im, dtype=float)
-    positive = np.flatnonzero(H_im > 0)
-    if positive.size < 2:
-        raise ValueError("H_im needs at least two positive values")
-    return im[: positive[-1] + 1], H_im[: positive[-1] + 1]
 
 
 def pchip_interpolant(im: ArrayLike, H_im: ArrayLike) -> PchipInterpolator:
@@ -956,15 +872,6 @@ def pchip_interpolant(im: ArrayLike, H_im: ArrayLike) -> PchipInterpolator:
 
     The interpolant does not extrapolate: outside :math:`\ln im_0` to the
     logarithm of the last level with positive hazard it returns ``nan``.
-
-    The hazard derivative follows from the chain rule. With :math:`f'` the
-    first derivative of the interpolant (``f.derivative()``, or ``f(x, 1)``),
-
-    .. math::
-
-        \frac{dH}{d\,im} = H(im) \, \frac{f'(\ln im)}{im},
-
-    which is what :func:`pchip_dHdx` returns.
 
     Parameters
     ----------
@@ -1003,21 +910,18 @@ def pchip_interpolant(im: ArrayLike, H_im: ArrayLike) -> PchipInterpolator:
     >>> f = hazard.pchip_interpolant(im, H_im)
     >>> round(float(np.exp(f(np.log(0.2)))), 12)  # the tabulated value
     0.003
-    >>> x = np.log(0.3)
-    >>> dHdx = np.exp(f(x)) * f(x, 1) / 0.3
-    >>> bool(np.isclose(dHdx, hazard.pchip_dHdx(0.3, im, H_im)))
-    True
     >>> bool(np.isnan(f(np.log(2.0))))  # outside the curve
     True
     """
+    # ln(0) is undefined, so the zero tail is dropped before the log-log fit.
     im, H_im = _validate_curve(*_trim_zero_tail(im, H_im))
     return PchipInterpolator(np.log(im), np.log(H_im), extrapolate=False)
 
 
-def pchip_approx(iml: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
+def pchip_approx(im_x: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
     r"""Numerical hazard curve interpolated by PCHIP in log-log space.
 
-    Evaluates :math:`H(iml) = \exp(f(\ln iml))`, with :math:`f` the
+    Evaluates :math:`H(im_x) = \exp(f(\ln im_x))`, with :math:`f` the
     interpolant of :func:`pchip_interpolant`: a piecewise cubic Hermite
     interpolating polynomial (PCHIP; Fritsch & Carlson 1980) of
     :math:`\ln H` against :math:`\ln im`. Between each pair of tabulated
@@ -1025,26 +929,24 @@ def pchip_approx(iml: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray
     slopes, and the slope at each level is a weighted harmonic mean of the
     slopes of the neighbouring segments.
 
-    Compared with straight-line interpolation in log-log space:
+    Unlike linear interpolation in log-log space the slope
+    :math:`d(\ln H)/d(\ln im)` is continuous across the tabulated points.
 
-    - the slope :math:`d(\ln H)/d(\ln im)` is continuous across the
-      tabulated levels, so the hazard derivative :func:`pchip_dHdx`, and any
-      risk integrand built from it, has no steps at those levels;
-    - the interpolant never overshoots the data, so the interpolated hazard is
-      strictly decreasing wherever the tabulated hazard is. An ordinary cubic
-      spline does not guarantee this.
+    The interpolant never overshoots the data, so the interpolated hazard is
+    strictly decreasing wherever the tabulated hazard is. An ordinary cubic
+    spline does not guarantee this.
 
-    The values at the tabulated levels are reproduced exactly, and a curve that
+    The values at the tabulated points are reproduced exactly, and a curve that
     is already a straight line in log-log space (first order) is reproduced
     exactly everywhere.
 
     Trailing zeros in ``H_im`` are dropped, and the curve is not
-    extrapolated: ``iml`` outside ``im[0]`` to the last level with positive
+    extrapolated: ``im_x`` outside ``im[0]`` to the last point with positive
     hazard returns ``nan``.
 
     Parameters
     ----------
-    iml : array_like
+    im_x : array_like
         Intensity measure levels at which to evaluate the hazard.
     im : array_like
         Intensity measure levels of the numerical hazard curve, strictly
@@ -1056,8 +958,8 @@ def pchip_approx(iml: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray
     Returns
     -------
     float or ndarray
-        The interpolated mean annual frequency of exceeding ``iml`` (per
-        year), with the shape of ``iml``.
+        The interpolated mean annual frequency of exceeding ``im_x`` (per
+        year), with the shape of ``im_x``.
 
     Raises
     ------
@@ -1080,28 +982,33 @@ def pchip_approx(iml: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray
     [0.00511  0.001319      nan]
     """
     interpolant = pchip_interpolant(im, H_im)
-    iml = np.asarray(iml, dtype=float)
-    H_iml: FloatOrArray = np.exp(interpolant(np.log(iml)))
-    return H_iml
+    im_x = np.asarray(im_x, dtype=float)
+    # The interpolant maps ln(im) to ln(H), so evaluate in logs and exponentiate.
+    H_im_x: FloatOrArray = np.exp(interpolant(np.log(im_x)))
+    return H_im_x
 
 
-def pchip_dHdx(iml: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
+def pchip_dHdx(im_x: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
     r"""Derivative of the PCHIP-interpolated hazard curve, :math:`dH/d\,im`.
 
     The interpolant is :math:`\ln H = f(\ln im)` (see
-    :func:`pchip_interpolant`), so by the chain rule
+    :func:`pchip_interpolant`), i.e. :math:`H(im) = \exp(f(\ln im))`.
+    Differentiating with the chain rule, the outer exponential gives
+    :math:`H(im)`, the cubic gives its slope :math:`f'(\ln im)`, and
+    :math:`d(\ln im)/d\,im = 1/im`:
 
     .. math::
 
-        \frac{dH}{d\,im} = H(im) \, \frac{f'(\ln im)}{im},
+        \frac{dH}{d\,im} = H(im) \, \frac{f'(\ln im)}{im}.
 
-    with :math:`f'` the analytical derivative of the piecewise cubic. It is
-    negative and continuous. As for :func:`pchip_approx`, ``iml`` outside
-    the curve returns ``nan``.
+    :math:`f'` is the analytical derivative of the piecewise cubic,
+    available from the interpolant as ``f.derivative()`` or ``f(x, 1)``. The
+    result is negative and continuous. As for :func:`pchip_approx`, ``im_x``
+    outside the curve returns ``nan``.
 
     Parameters
     ----------
-    iml : array_like
+    im_x : array_like
         Intensity measure levels at which to evaluate the derivative.
     im : array_like
         Intensity measure levels of the numerical hazard curve, strictly
@@ -1113,8 +1020,8 @@ def pchip_dHdx(iml: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
     Returns
     -------
     float or ndarray
-        :math:`dH/d\,im` at ``iml`` (per year per unit of ``im``), with the
-        shape of ``iml``.
+        :math:`dH/d\,im` at ``im_x`` (per year per unit of ``im``), with the
+        shape of ``im_x``.
 
     Raises
     ------
@@ -1139,10 +1046,19 @@ def pchip_dHdx(iml: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
     >>> exact = hazard.first_order_dHdx(0.5, 1e-4, 2.5)
     >>> bool(np.isclose(hazard.pchip_dHdx(0.5, im, H_im), exact))
     True
+
+    The same value from the interpolant :math:`f` of
+    :func:`pchip_interpolant` and its first derivative ``f(x, 1)``:
+
+    >>> f = hazard.pchip_interpolant(im, H_im)
+    >>> x = np.log(0.5)
+    >>> dHdx = np.exp(f(x)) * f(x, 1) / 0.5
+    >>> bool(np.isclose(dHdx, hazard.pchip_dHdx(0.5, im, H_im)))
+    True
     """
     interpolant = pchip_interpolant(im, H_im)
-    iml = np.asarray(iml, dtype=float)
-    x = np.log(iml)
+    im_x = np.asarray(im_x, dtype=float)
+    x = np.log(im_x)
     # Chain rule on ln(H) = f(ln(im)): dH/d(im) = H * f'(ln im) / im.
-    dHdx: FloatOrArray = np.exp(interpolant(x)) * interpolant(x, 1) / iml
+    dHdx: FloatOrArray = np.exp(interpolant(x)) * interpolant(x, 1) / im_x
     return dHdx

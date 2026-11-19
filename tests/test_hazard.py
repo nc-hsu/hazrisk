@@ -216,11 +216,46 @@ def test_too_few_points_in_band_raises(second_order_curve):
         haz.fit_second_order_regression(im, H_im, iml_band=(im[5], im[6]))
 
 
-def test_non_positive_hazard_raises(im):
-    H_im = haz.first_order_approx(im, K0, K1)
-    H_im[-3:] = 0.0
+# --- trailing zeros (as OpenQuake writes them) ---------------------------------
+
+# Each fit with its fitting points or band, as keyword arguments.
+FITS_WITH_ARGUMENTS = [
+    (haz.fit_first_order_points, {"mafe": [1e-2, 1e-3]}),
+    (haz.fit_first_order_points, {"iml": [0.05, 0.5]}),
+    (haz.fit_second_order_points, {"mafe": [1e-1, 1e-2, 1e-3]}),
+    (haz.fit_second_order_points, {"iml": [0.02, 0.2, 1.0]}),
+    (haz.fit_first_order_regression, {}),
+    (haz.fit_first_order_regression, {"mafe_band": (1e-5, 1e-2)}),
+    (haz.fit_second_order_regression, {}),
+    (haz.fit_second_order_regression, {"iml_band": (0.02, 2.0)}),
+]
+
+
+@pytest.mark.parametrize("fit, kwargs", FITS_WITH_ARGUMENTS)
+def test_fits_drop_a_trailing_run_of_zeros(second_order_curve, fit, kwargs):
+    """The same curve with three zero levels appended gives the same fit."""
+    im, H_im = second_order_curve
+    im_zero = np.append(im, im[-1] * np.array([1.5, 2.0, 3.0]))
+    H_zero = np.append(H_im, [0.0, 0.0, 0.0])
+    assert fit(im_zero, H_zero, **kwargs) == fit(im, H_im, **kwargs)
+
+
+@pytest.mark.parametrize("fit, kwargs", FITS_WITH_ARGUMENTS)
+def test_fits_reject_a_zero_inside_the_curve(second_order_curve, fit, kwargs):
+    """A zero followed by a positive value is not a trailing run, so it raises."""
+    im, H_im = second_order_curve
+    H_hole = H_im.copy()
+    H_hole[-5] = 0.0
     with pytest.raises(ValueError, match="strictly positive"):
-        haz.fit_first_order_regression(im, H_im)
+        fit(im, H_hole, **kwargs)
+
+
+def test_fits_reject_curves_of_different_lengths(second_order_curve):
+    """Trimming the zeros must not hide a length mismatch."""
+    im, H_im = second_order_curve
+    H_zero = np.append(H_im, [0.0, 0.0])
+    with pytest.raises(ValueError, match="same length"):
+        haz.fit_first_order_regression(im, H_zero)
 
 
 def test_non_monotonic_input_raises(first_order_curve):
@@ -247,7 +282,7 @@ def test_fitted_coefficients_are_ordered_for_the_risk_functions(second_order_cur
     beta, theta_c = 0.4, 0.3
 
     k0, k1, k2, _ = haz.fit_second_order_regression(im, H_im)
-    closed_form = risk.mafe_second_order(theta_c, k0, k1, k2, beta)
+    closed_form = risk.mafe_second_order(theta_c, beta, k0, k1, k2)
 
     fine_im = np.logspace(-2, 1.5, 4000)
     fine_H = haz.second_order_approx(fine_im, K0, K1, K2)

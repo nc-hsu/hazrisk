@@ -114,7 +114,7 @@ The risk integrand (below) contains the slope of the hazard curve. With
 straight lines between the tabulated levels in log-log space, that slope is
 constant over each interval and jumps at every level, so the integrand has
 steps and the integral is biased where the slope changes fastest: at the rare
-end of the curve, which dominates collapse risk. PCHIP keeps the slope
+end of the curve. PCHIP keeps the slope
 continuous. For a power-law hazard curve the log-log data lie on a straight
 line, PCHIP reproduces it exactly, and the numerical result converges to the
 first-order closed form.

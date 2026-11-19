@@ -103,7 +103,7 @@ def _check_tabulated(H_im: FloatArray, fragility: FloatArray) -> None:
 
 
 def mafe_first_order(
-    theta_c: ArrayLike, k0: ArrayLike, k1: ArrayLike, beta: ArrayLike
+    theta_c: ArrayLike, beta: ArrayLike, k0: ArrayLike, k1: ArrayLike
 ) -> FloatOrArray:
     r"""MAFE of a limit state on the first-order hazard (SAC/FEMA closed form).
 
@@ -118,18 +118,14 @@ def mafe_first_order(
                   = k_0 \, \theta_c^{-k_1}
                     \exp\left(\tfrac{1}{2} k_1^2 \beta^2\right).
 
-    The result is only as good as the hazard fit around :math:`\theta_c`:
-    fit :math:`k_0, k_1` over the hazard levels that matter for the limit
-    state (:func:`hazrisk.hazard.fit_first_order_regression`).
-
     Parameters
     ----------
     theta_c : array_like
         Median capacity, in the unit of ``im``.
-    k0, k1 : array_like
-        Coefficients of the first-order hazard approximation.
     beta : array_like
         Lognormal dispersion of the fragility.
+    k0, k1 : array_like
+        Coefficients of the first-order hazard approximation.
 
     Returns
     -------
@@ -137,6 +133,16 @@ def mafe_first_order(
         Mean annual frequency of the limit state (per year), with the
         broadcast shape of the inputs.
 
+    Notes
+    -----
+    The closed form assumes a lognormal fragility and that the hazard follows
+    the fitted first-order shape over the intensities that matter for the
+    limit state, roughly :math:`\theta_c` and a few :math:`\beta` below it.
+    Fit the coefficients over those hazard levels, for example with
+    :func:`hazrisk.hazard.fit_first_order_regression`. Where the real hazard curve
+    bends away from the fitted shape the answer is biased; check it against
+    :func:`numerical_mafe_pchip` on the tabulated curve.
+
     References
     ----------
     Cornell, C. A., Jalayer, F., Hamburger, R. O. & Foutch, D. A. (2002).
@@ -147,37 +153,37 @@ def mafe_first_order(
     Examples
     --------
     >>> from hazrisk import risk
-    >>> print(f"{risk.mafe_first_order(0.6, k0=1e-4, k1=2.5, beta=0.4):.4e}")
+    >>> print(f"{risk.mafe_first_order(0.6, beta=0.4, k0=1e-4, k1=2.5):.4e}")
     5.9125e-04
     """
     # Cast arrays to float: numpy refuses negative powers of integer arrays.
-    theta_c, k0, k1, beta = (as_float(a) for a in (theta_c, k0, k1, beta))
+    theta_c, beta, k0, k1 = (as_float(a) for a in (theta_c, beta, k0, k1))
     mafe: FloatOrArray = k0 * theta_c ** (-k1) * np.exp(0.5 * (beta * k1) ** 2)
     return mafe
 
 
 def required_capacity_first_order(
-    target_mafe: ArrayLike, k0: ArrayLike, k1: ArrayLike, beta: ArrayLike
+    target_mafe: ArrayLike, beta: ArrayLike, k0: ArrayLike, k1: ArrayLike
 ) -> FloatOrArray:
     r"""Median capacity that gives a target MAFE on the first-order hazard.
 
     The inverse of :func:`mafe_first_order` (Cornell et al. 2002): solving
-    :math:`\lambda = k_0 \theta_c^{-k_1} \exp(\tfrac{1}{2} k_1^2 \beta^2)`
+    :math:`\lambda_C = k_0 \theta_c^{-k_1} \exp(\tfrac{1}{2} k_1^2 \beta^2)`
     for :math:`\theta_c`,
 
     .. math::
 
         \theta_c = \exp\left(\tfrac{1}{2} k_1 \beta^2
-                   - \frac{\ln(\lambda / k_0)}{k_1}\right).
+                   - \frac{\ln(\lambda_C / k_0)}{k_1}\right).
 
     Parameters
     ----------
     target_mafe : array_like
         Target mean annual frequency of the limit state (per year, > 0).
-    k0, k1 : array_like
-        Coefficients of the first-order hazard approximation.
     beta : array_like
         Lognormal dispersion of the fragility.
+    k0, k1 : array_like
+        Coefficients of the first-order hazard approximation.
 
     Returns
     -------
@@ -185,6 +191,16 @@ def required_capacity_first_order(
         Required median capacity, in the unit of ``im``, with the broadcast
         shape of the inputs.
 
+    Notes
+    -----
+    The closed form assumes a lognormal fragility and that the hazard follows
+    the fitted first-order shape over the intensities that matter for the
+    limit state, roughly :math:`\theta_c` and a few :math:`\beta` below it.
+    Fit the coefficients over those hazard levels, for example with
+    :func:`hazrisk.hazard.fit_first_order_regression`. Where the real hazard curve
+    bends away from the fitted shape the answer is biased; check it against
+    :func:`numerical_mafe_pchip` on the tabulated curve.
+
     References
     ----------
     Cornell, C. A., Jalayer, F., Hamburger, R. O. & Foutch, D. A. (2002).
@@ -195,13 +211,13 @@ def required_capacity_first_order(
     Examples
     --------
     >>> from hazrisk import risk
-    >>> theta = risk.required_capacity_first_order(2e-4, k0=1e-4, k1=2.5, beta=0.4)
+    >>> theta = risk.required_capacity_first_order(2e-4, beta=0.4, k0=1e-4, k1=2.5)
     >>> print(f"{theta:.4f}")
     0.9257
-    >>> print(f"{risk.mafe_first_order(theta, 1e-4, 2.5, 0.4):.1e}")
+    >>> print(f"{risk.mafe_first_order(theta, 0.4, 1e-4, 2.5):.1e}")
     2.0e-04
     """
-    target_mafe, k0, k1, beta = (as_float(a) for a in (target_mafe, k0, k1, beta))
+    target_mafe, beta, k0, k1 = (as_float(a) for a in (target_mafe, beta, k0, k1))
     return np.exp((0.5 * k1 * beta**2) - (np.log(target_mafe / k0) / k1))
 
 
@@ -257,7 +273,7 @@ def p_second_order(k2: ArrayLike, beta: ArrayLike) -> FloatOrArray:
 
 
 def mafe_second_order(
-    theta_c: ArrayLike, k0: ArrayLike, k1: ArrayLike, k2: ArrayLike, beta: ArrayLike
+    theta_c: ArrayLike, beta: ArrayLike, k0: ArrayLike, k1: ArrayLike, k2: ArrayLike
 ) -> FloatOrArray:
     r"""MAFE of a limit state on the second-order hazard (closed form).
 
@@ -274,19 +290,14 @@ def mafe_second_order(
     with :math:`p` from :func:`p_second_order`. At :math:`k_2 = 0`,
     :math:`p = 1` and this is :func:`mafe_first_order`.
 
-    The fitted second-order curve is only trustworthy over the band it was
-    fitted to; the result is good when that band covers the intensities that
-    dominate the risk (roughly :math:`\theta_c` and a few :math:`\beta`
-    below it).
-
     Parameters
     ----------
     theta_c : array_like
         Median capacity, in the unit of ``im``.
-    k0, k1, k2 : array_like
-        Coefficients of the second-order hazard approximation.
     beta : array_like
         Lognormal dispersion of the fragility.
+    k0, k1, k2 : array_like
+        Coefficients of the second-order hazard approximation.
 
     Returns
     -------
@@ -299,6 +310,16 @@ def mafe_second_order(
     ValueError
         If :math:`1 + 2 k_2 \beta^2 \le 0` for any element.
 
+    Notes
+    -----
+    The closed form assumes a lognormal fragility and that the hazard follows
+    the fitted second-order shape over the intensities that matter for the
+    limit state, roughly :math:`\theta_c` and a few :math:`\beta` below it.
+    Fit the coefficients over those hazard levels, for example with
+    :func:`hazrisk.hazard.fit_second_order_regression`. Where the real hazard curve
+    bends away from the fitted shape the answer is biased; check it against
+    :func:`numerical_mafe_pchip` on the tabulated curve.
+
     References
     ----------
     Vamvatsikos, D. (2013). Derivation of new SAC/FEMA performance evaluation
@@ -308,10 +329,10 @@ def mafe_second_order(
     Examples
     --------
     >>> from hazrisk import risk
-    >>> print(f"{risk.mafe_second_order(0.6, 1e-4, 2.5, 0.2, 0.4):.4e}")
+    >>> print(f"{risk.mafe_second_order(0.6, 0.4, 1e-4, 2.5, 0.2):.4e}")
     4.9043e-04
     """
-    theta_c, k0, k1, k2, beta = (as_float(a) for a in (theta_c, k0, k1, k2, beta))
+    theta_c, beta, k0, k1, k2 = (as_float(a) for a in (theta_c, beta, k0, k1, k2))
     p = p_second_order(k2, beta)
     H_theta = haz.second_order_approx(theta_c, k0, k1, k2)
     mafe: FloatOrArray = (
@@ -322,54 +343,32 @@ def mafe_second_order(
 
 def required_capacity_second_order(
     target_mafe: ArrayLike,
+    beta: ArrayLike,
     k0: ArrayLike,
     k1: ArrayLike,
     k2: ArrayLike,
-    beta: ArrayLike,
 ) -> FloatOrArray:
     r"""Median capacity that gives a target MAFE on the second-order hazard.
 
-    The inverse of :func:`mafe_second_order` (Vamvatsikos 2013). Taking logs
-    of the closed form
+    The inverse of :func:`mafe_second_order` (Vamvatsikos 2013). With
+    :math:`p` from :func:`p_second_order`, the target :math:`\lambda_C`, and
 
     .. math::
 
-        \lambda = \sqrt{p}\, k_0^{1-p}\, H(\theta_c)^p
-                  \exp\left(\tfrac{1}{2} p k_1^2 \beta^2\right),
-        \qquad
-        \ln H(\theta_c) = \ln k_0 - k_1 x - k_2 x^2,
-        \qquad x = \ln \theta_c,
+        L = \ln\frac{\lambda_C}{k_0 \sqrt{p}}, \qquad
+        D = \frac{k_1^2 - 4 k_2 L}{p},
 
-    and writing :math:`L = \ln\left(\lambda / (k_0 \sqrt{p})\right)` gives
-    a quadratic in :math:`x`,
+    the required median capacity is :math:`\theta_c = e^x` with
 
     .. math::
 
-        k_2 x^2 + k_1 x + \left(\frac{L}{p} - \tfrac{1}{2} k_1^2 \beta^2\right) = 0,
-
-    with discriminant (using :math:`1/p = 1 + 2 k_2 \beta^2`)
-
-    .. math::
-
-        D = \frac{k_1^2 - 4 k_2 L}{p}.
-
-    The root that tends to the first-order answer as :math:`k_2 \to 0` is
-    :math:`x = (-k_1 + \sqrt{D}) / (2 k_2)`. Written like that it divides
-    by :math:`k_2`: it fails at :math:`k_2 = 0` and loses accuracy for small
-    :math:`k_2`, where :math:`\sqrt{D}` is close to :math:`k_1` and the
-    numerator cancels. Multiplying numerator and denominator by
-    :math:`k_1 + \sqrt{D}` removes the division (since
-    :math:`D - k_1^2 = 2 k_2 (k_1^2 \beta^2 - 2L/p)`):
-
-    .. math::
-
-        x = \frac{k_1^2 \beta^2 - 2L/p}{k_1 + \sqrt{D}}
-          = \frac{\tfrac{1}{2} k_1 \beta^2 - L / (p k_1)}
+        x = \frac{\tfrac{1}{2} k_1 \beta^2 - L / (p k_1)}
                  {(k_1 + \sqrt{D}) / (2 k_1)}.
 
-    The second form is the one evaluated. At :math:`k_2 = 0`, :math:`p = 1`,
-    :math:`\sqrt{D} = k_1` and the denominator is exactly one, so the result
-    is exactly :func:`required_capacity_first_order`.
+    At :math:`k_2 = 0` this is exactly :func:`required_capacity_first_order`.
+    The derivation (a quadratic in :math:`x = \ln\theta_c`, rearranged so it
+    does not divide by :math:`k_2`) is in
+    :ref:`theory-required-capacity-second-order`.
 
     A negative :math:`D` means no capacity gives the target: the fitted
     second-order curve never reaches that frequency.
@@ -378,10 +377,10 @@ def required_capacity_second_order(
     ----------
     target_mafe : array_like
         Target mean annual frequency of the limit state (per year, > 0).
-    k0, k1, k2 : array_like
-        Coefficients of the second-order hazard approximation.
     beta : array_like
         Lognormal dispersion of the fragility.
+    k0, k1, k2 : array_like
+        Coefficients of the second-order hazard approximation.
 
     Returns
     -------
@@ -395,6 +394,16 @@ def required_capacity_second_order(
         If :math:`1 + 2 k_2 \beta^2 \le 0`, or :math:`D < 0`, for any
         element.
 
+    Notes
+    -----
+    The closed form assumes a lognormal fragility and that the hazard follows
+    the fitted second-order shape over the intensities that matter for the
+    limit state, roughly :math:`\theta_c` and a few :math:`\beta` below it.
+    Fit the coefficients over those hazard levels, for example with
+    :func:`hazrisk.hazard.fit_second_order_regression`. Where the real hazard curve
+    bends away from the fitted shape the answer is biased; check it against
+    :func:`numerical_mafe_pchip` on the tabulated curve.
+
     References
     ----------
     Vamvatsikos, D. (2013). Derivation of new SAC/FEMA performance evaluation
@@ -404,14 +413,14 @@ def required_capacity_second_order(
     Examples
     --------
     >>> from hazrisk import risk
-    >>> theta = risk.required_capacity_second_order(2e-4, 1e-4, 2.5, 0.2, 0.4)
+    >>> theta = risk.required_capacity_second_order(2e-4, 0.4, 1e-4, 2.5, 0.2)
     >>> print(f"{theta:.4f}")
     0.8966
-    >>> print(f"{risk.mafe_second_order(theta, 1e-4, 2.5, 0.2, 0.4):.1e}")
+    >>> print(f"{risk.mafe_second_order(theta, 0.4, 1e-4, 2.5, 0.2):.1e}")
     2.0e-04
     """
-    target_mafe, k0, k1, k2, beta = (
-        as_float(a) for a in (target_mafe, k0, k1, k2, beta)
+    target_mafe, beta, k0, k1, k2 = (
+        as_float(a) for a in (target_mafe, beta, k0, k1, k2)
     )
     p = p_second_order(k2, beta)
     L = np.log(target_mafe / (k0 * np.sqrt(p)))
@@ -422,6 +431,7 @@ def required_capacity_second_order(
             "the target MAFE is out of reach of the second-order solution "
             "(negative discriminant k1**2/p - 4*k2*L/p) for " + _count(bad)
         )
+    # The rationalised root: no division by k2, so it is exact at k2 = 0.
     return np.exp((0.5 * k1 * beta**2 - L / (p * k1)) / ((k1 + np.sqrt(D)) / (2 * k1)))
 
 
@@ -438,46 +448,14 @@ def numerical_mafe(H_im: ArrayLike, fragility: ArrayLike) -> FloatOrArray:
     .. math::
 
         \lambda_C = \int_0^\infty P(C \mid im) \,
-                    \left|\frac{d\lambda}{d\,im}\right| \, d\,im,
+                    \left|\frac{dH}{d\,im}\right| \, d\,im,
 
     where :math:`P(C \mid im)` is the fragility (probability of the limit
-    state given the intensity measure ``im``) and :math:`\lambda(im)` =
-    ``H_im`` is the hazard curve (mean annual frequency of exceeding ``im``).
-
-    Rather than estimate the hazard derivative :math:`d\lambda/d\,im` and
-    re-integrate it, this changes the variable of integration from ``im`` to
-    the hazard :math:`\lambda`. Because the hazard decreases monotonically
-    with ``im``, :math:`|d\lambda/d\,im| \, d\,im = -d\lambda`, and the
-    integral becomes
-
-    .. math::
-
-        \lambda_C = -\int P(C \mid im) \, d\lambda,
-
-    i.e. simply the fragility integrated against the hazard curve.
-    Geometrically, if the fragility is plotted on the y-axis against
-    ``H_im`` on the x-axis, the risk is the area under that curve.
-    ``np.trapezoid(fragility, H_im)`` returns the signed area under the
-    polyline through the points ``(H_im[i], fragility[i])``; since the arrays
-    are ordered by increasing ``im`` (hence decreasing ``H_im``) the x-axis is
-    traversed right-to-left and the signed area is negative, so the result is
-    negated.
-
-    This formulation:
-
-    - integrates the smooth, bounded fragility curve with the trapezoid rule,
-      rather than the sharply peaked hazard derivative, which straight lines
-      represent far less faithfully;
-    - remains correct for non-uniformly spaced intensity measure levels,
-      because the area uses the actual ``H_im`` spacing and ``im`` itself
-      drops out.
-
-    The final term ``H_im[-1] * fragility[-1]`` is the contribution of all
-    intensities beyond the last level ``im[-1]``. That is the region where
-    the hazard runs from 0 up to ``H_im[-1]`` and the fragility is taken to
-    stay at ``fragility[-1]``; geometrically it is the rectangle that extends
-    the area down to ``H_im = 0``. Below ``im[0]`` the fragility is assumed
-    negligible.
+    state given the intensity measure ``im``) and :math:`H(im)` = ``H_im`` is
+    the hazard curve (mean annual frequency of exceeding ``im``). It is
+    evaluated with the trapezoid rule over the tabulated pairs
+    :math:`(H_i, P_i)`, plus a tail term for the intensities above the last
+    level (see Notes).
 
     ``fragility`` and ``H_im`` must be evaluated at the same intensity levels
     (ordered by increasing ``im``) so that each ``(H_im[i], fragility[i])``
@@ -514,6 +492,48 @@ def numerical_mafe(H_im: ArrayLike, fragility: ArrayLike) -> FloatOrArray:
         are allowed), or if the last axis of ``fragility`` does not have the
         length of ``H_im``.
 
+    Notes
+    -----
+    Rather than estimate the hazard derivative :math:`dH/d\,im` and
+    integrate it, this changes the variable of integration from ``im`` to
+    the hazard :math:`H`. Because the hazard decreases monotonically with
+    ``im``, :math:`|dH/d\,im| \, d\,im = -dH`, and the integral becomes
+
+    .. math::
+
+        \lambda_C = -\int P(C \mid im) \, dH,
+
+    i.e. simply the fragility integrated against the hazard curve.
+    Geometrically, if the fragility is plotted on the y-axis against
+    ``H_im`` on the x-axis, the risk is the area under that curve.
+    ``np.trapezoid(fragility, H_im)`` returns the signed area under the
+    polyline through the points ``(H_im[i], fragility[i])``; since the arrays
+    are ordered by increasing ``im`` (hence decreasing ``H_im``) the x-axis is
+    traversed right-to-left and the signed area is negative, so the result is
+    negated.
+
+    This formulation:
+
+    - integrates the smooth, bounded fragility curve with the trapezoid rule,
+      rather than the sharply peaked hazard derivative, which straight lines
+      represent far less faithfully;
+    - remains correct for non-uniformly spaced intensity measure levels,
+      because the area uses the actual ``H_im`` spacing and ``im`` itself
+      drops out.
+
+    The final term ``H_im[-1] * fragility[-1]`` is the contribution of all
+    intensities beyond the last level ``im[-1]``. That is the region where
+    the hazard runs from 0 up to ``H_im[-1]`` and the fragility is taken to
+    stay at ``fragility[-1]``; geometrically it is the rectangle that extends
+    the area down to ``H_im = 0``. If the curve ends in zeros (as OpenQuake
+    writes them) this term is zero, and the step from the last positive level
+    to the first zero is an ordinary trapezoid.
+
+    Limits of the integration range: below ``im[0]`` the fragility is taken
+    as zero, so the curve should start well below the fragility median; above
+    the last level the fragility is held at its last value, which
+    underestimates the risk slightly if the fragility is still rising there.
+
     References
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
@@ -530,6 +550,19 @@ def numerical_mafe(H_im: ArrayLike, fragility: ArrayLike) -> FloatOrArray:
     >>> P = fragility.lognormal_fragility_curve(im, 0.6, 0.4)
     >>> print(f"{risk.numerical_mafe(H_im, P):.4e}")
     4.9043e-04
+
+    Several fragility curves on the same hazard curve are integrated in one
+    call by stacking them along the leading axes of ``fragility``; the
+    integration runs over the last axis, which matches ``H_im``. Here three
+    median capacities, as a ``(3, 2000)`` stack:
+
+    >>> theta_c = np.array([0.4, 0.6, 0.9])
+    >>> P_stack = fragility.lognormal_fragility_curve(im, theta_c[:, None], 0.4)
+    >>> P_stack.shape
+    (3, 2000)
+    >>> mafe = risk.numerical_mafe(H_im, P_stack)
+    >>> print(np.array2string(mafe, formatter={"float": "{:.4e}".format}))
+    [1.1405e-03 4.9043e-04 1.9826e-04]
     """
     H_im = np.asarray(H_im, dtype=float)
     fragility = np.asarray(fragility, dtype=float)
@@ -550,36 +583,30 @@ def numerical_mafe_pchip(
 ) -> FloatOrArray:
     r"""MAFE for a lognormal fragility on a PCHIP-refined numerical hazard curve.
 
-    A PSHA hazard curve is usually tabulated at a few tens of intensity
-    levels, far too coarse to integrate directly against a fragility curve
-    with a dispersion of 0.2-0.4. This function refines it first: the hazard
-    is interpolated onto ``n_im`` log-spaced levels with
-    :func:`hazrisk.hazard.pchip_approx` (Fritsch & Carlson 1980), the
-    lognormal fragility is evaluated on the same levels, and the pair is
-    integrated with :func:`numerical_mafe`.
+    PCHIP interpolation is used to smooth out a coarsely sampled hazard curve
+    to calculate the MAFE more accurately. The hazard is interpolated onto
+    ``n_im`` log-spaced levels with :func:`hazrisk.hazard.pchip_approx`
+    (Fritsch & Carlson 1980), the lognormal fragility is evaluated on the
+    same levels, and the pair is integrated with :func:`numerical_mafe`.
 
-    Why PCHIP rather than straight lines in log-log space: the risk integrand
-    is :math:`P(C \mid im) \, |dH/d\,im|`, and with straight-line
-    interpolation the hazard slope is constant within each tabulated interval
-    and steps at every tabulated level. That shows as jumps in the risk
-    integrand (see :func:`risk_contribution_pchip`) and biases the integral
-    where the slope of :math:`\ln H` is changing quickly, i.e. at the rare end
-    of the curve that dominates collapse risk. PCHIP keeps the slope
-    continuous and cannot overshoot, so the refined hazard still decreases
-    monotonically. For a first-order (power law) hazard curve the
-    interpolation is exact and the result converges to
-    :func:`mafe_first_order`.
+    PCHIP is preferred to linear interpolation in log-log space because with
+    linear interpolation the hazard slope is constant within each interval and
+    changes abruptly at each point (i.e. the slope is discontinuous).
+    PCHIP keeps the slope continuous.
 
-    The integration range is ``im[0]`` to the last positive value of
-    ``H_im``:
-
-    - Below ``im[0]`` the fragility is assumed negligible, so the curve must
-      start well below the fragility median.
-    - Trailing zeros in ``H_im``, as written by OpenQuake above the
-      truncation ceiling or below the precision the probability is stored at,
-      are dropped. Everything above the last positive level enters through
-      the tail term of :func:`numerical_mafe`, i.e. with the fragility held
-      at its value at that level.
+    The refined grid runs from ``im[0]`` to the last positive value of
+    ``H_im``, since PCHIP works on :math:`\ln H` and :math:`\ln 0` is not
+    defined. Trailing zeros in ``H_im`` (as OpenQuake writes them above the
+    truncation ceiling of the ground motion model, or below the precision the
+    probability is stored at) still carry information: the hazard has fallen
+    to zero by the first zero level. So if the curve has trailing zeros, the
+    first zero level (its ``im``, with :math:`H = 0`) is appended to the
+    refined grid before integrating. The step from the last positive level to
+    that zero is then a trapezoid with the fragility averaged over the
+    interval, as :func:`numerical_mafe` does on the raw curve, and the tail
+    term is zero. Zeros after the first one add nothing and are not used.
+    Without trailing zeros, everything above the last level enters through
+    the tail term of :func:`numerical_mafe`.
 
     ``theta_c`` and ``beta`` broadcast against each other, so a whole set of
     fragility curves (e.g. a Monte Carlo sample of ``(theta_c, beta)``, or
@@ -600,8 +627,7 @@ def numerical_mafe_pchip(
         Lognormal dispersion of the fragility.
     n_im : int, optional
         Number of log-spaced levels of the refined integration grid. The
-        default of 2000 puts the integration error well below 0.1 % for
-        ``beta`` down to about 0.1.
+        default is 2000.
 
     Returns
     -------
@@ -616,6 +642,15 @@ def numerical_mafe_pchip(
         If the hazard curve is unusable (see
         :func:`hazrisk.hazard.pchip_interpolant`).
 
+    Notes
+    -----
+    Limits of the integration range: below ``im[0]`` the fragility is taken
+    as zero, so the curve should start well below the fragility median. For
+    a curve without trailing zeros, the fragility is held at its value at the
+    last level for every intensity above it (the tail term of
+    :func:`numerical_mafe`), which underestimates the risk slightly if the
+    fragility is still rising there.
+
     References
     ----------
     Fritsch, F. N. & Carlson, R. E. (1980). Monotone piecewise cubic
@@ -624,8 +659,9 @@ def numerical_mafe_pchip(
 
     Examples
     --------
-    On a coarse 30-level curve, against the closed form 4.9043e-04
-    (:func:`mafe_second_order`):
+    On a coarse 30-level curve that follows the second-order form, the
+    closed-form second-order MAFE is 4.9043e-04, and the numerical
+    integration matches it:
 
     >>> import numpy as np
     >>> from hazrisk import hazard, risk
@@ -633,18 +669,44 @@ def numerical_mafe_pchip(
     >>> H_im = hazard.second_order_approx(im, 1e-4, 2.5, 0.2)
     >>> print(f"{risk.numerical_mafe_pchip(0.6, im, H_im, 0.4):.4e}")
     4.9043e-04
+
+    ``theta_c`` and ``beta`` broadcast against each other, so a set of
+    fragility curves is integrated against the same refined hazard in one
+    call. Here three median capacities (a column) times two dispersions (a
+    row) give a ``(3, 2)`` array:
+
+    >>> theta_c = np.array([[0.4], [0.6], [0.9]])
+    >>> beta = np.array([0.3, 0.5])
+    >>> mafe = risk.numerical_mafe_pchip(theta_c, im, H_im, beta)
+    >>> mafe.shape
+    (3, 2)
+    >>> print(np.array2string(mafe, formatter={"float": "{:.4e}".format}))
+    [[1.0003e-03 1.3362e-03]
+     [4.2043e-04 5.9068e-04]
+     [1.6585e-04 2.4597e-04]]
     """
-    im, H_im = haz._trim_zero_tail(im, H_im)
-    iml = np.geomspace(im[0], im[-1], n_im)
-    H_iml = haz.pchip_approx(iml, im, H_im)
+    im = np.asarray(im, dtype=float)
+    im_pos, H_pos = haz._trim_zero_tail(im, H_im)
+
+    # Refine the positive part of the curve with PCHIP on a log-spaced grid.
+    im_x = np.geomspace(im_pos[0], im_pos[-1], n_im)
+    H_im_x = haz.pchip_approx(im_x, im_pos, H_pos)
+
+    # If the curve has trailing zeros, the hazard has reached zero by the first
+    # zero level: append that level with H = 0, so the step down to it is
+    # integrated as a trapezoid (as numerical_mafe does on the raw curve) and
+    # the tail term vanishes. Later zeros would add nothing.
+    if im_pos.size < im.size:
+        im_x = np.append(im_x, im[im_pos.size])
+        H_im_x = np.append(H_im_x, 0.0)
 
     # Trailing axis = intensity level, leading axes = the (theta_c, beta) set.
     theta_c, beta = np.broadcast_arrays(
         np.asarray(theta_c, dtype=float), np.asarray(beta, dtype=float)
     )
-    fragility = lognormal_fragility_curve(iml, theta_c[..., None], beta[..., None])
+    fragility = lognormal_fragility_curve(im_x, theta_c[..., None], beta[..., None])
 
-    mafe = numerical_mafe(H_iml, fragility)
+    mafe = numerical_mafe(H_im_x, fragility)
     return float(mafe) if np.ndim(mafe) == 0 else mafe
 
 
@@ -680,9 +742,6 @@ def risk_contribution(
 
     So the result has one value per level, and their sum equals
     ``numerical_mafe(H_im, fragility)`` up to floating-point rounding.
-    Plotted as bars against ``im``, element ``i`` sits on the interval
-    starting at ``im[i]``; it is approximately the integral of
-    :func:`risk_contribution_pchip` over that interval in :math:`\ln im`.
 
     Parameters
     ----------
@@ -711,6 +770,14 @@ def risk_contribution(
         If ``im`` is not strictly increasing, ``H_im`` increases anywhere, or
         the lengths of ``im``, ``H_im`` and the last axis of ``fragility``
         differ.
+
+    Notes
+    -----
+    The contributions share the limits of :func:`numerical_mafe`: nothing is
+    counted below ``im[0]`` (the fragility is taken as zero there), and the
+    last element holds the fragility at its last value for every intensity
+    above the last level. If the curve ends in zeros, that last element is
+    zero and the step to the first zero level is an ordinary interval.
 
     Examples
     --------
@@ -753,7 +820,7 @@ def risk_contribution(
 
 
 def risk_contribution_pchip(
-    iml: ArrayLike,
+    im_x: ArrayLike,
     theta_c: float,
     im: ArrayLike,
     H_im: ArrayLike,
@@ -781,14 +848,17 @@ def risk_contribution_pchip(
     the tabulated levels of the hazard curve, which a straight-line log-log
     interpolation produces.
 
-    With ``normalised=True`` the contribution is divided by the total from
+    The contribution is evaluated by PCHIP from ``im[0]`` up to the last
+    positive level of the curve, and is ``nan`` above it. With
+    ``normalised=True`` it is divided by the total from
     :func:`numerical_mafe_pchip`, so it integrates (over :math:`\ln im`) to
-    one minus the share of the risk that lies above the last positive level
-    of the curve.
+    one minus the share of that total which lies above the last positive
+    level: the tail term for a curve without trailing zeros, or the step
+    down to the first zero level for a curve with them.
 
     Parameters
     ----------
-    iml : array_like
+    im_x : array_like
         Intensity measure levels at which to evaluate the contribution.
         Levels outside ``im[0]`` to the last positive level of the curve
         return ``nan``.
@@ -809,7 +879,7 @@ def risk_contribution_pchip(
     Returns
     -------
     float or ndarray
-        :math:`d\lambda_C / d \ln im` at each ``iml`` (per year), or its share
+        :math:`d\lambda_C / d \ln im` at each ``im_x`` (per year), or its share
         of the total if ``normalised``.
 
     Raises
@@ -817,6 +887,13 @@ def risk_contribution_pchip(
     ValueError
         If the hazard curve is unusable (see
         :func:`hazrisk.hazard.pchip_interpolant`).
+
+    Notes
+    -----
+    The total it is normalised by has the limits of
+    :func:`numerical_mafe_pchip`: the fragility is taken as zero below
+    ``im[0]``, and, for a curve without trailing zeros, held at its last
+    value above the last level.
 
     References
     ----------
@@ -833,18 +910,20 @@ def risk_contribution_pchip(
     >>> from hazrisk import hazard, risk
     >>> im = np.geomspace(0.01, 10.0, 30)
     >>> H_im = hazard.second_order_approx(im, 1e-4, 2.5, 0.2)
-    >>> iml = np.geomspace(im[0], im[-1], 4000)
-    >>> c = risk.risk_contribution_pchip(iml, 0.6, im, H_im, 0.4)
-    >>> print(f"{np.trapezoid(c, np.log(iml)):.4f}")
+    >>> im_x = np.geomspace(im[0], im[-1], 4000)
+    >>> c = risk.risk_contribution_pchip(im_x, 0.6, im, H_im, 0.4)
+    >>> print(f"{np.trapezoid(c, np.log(im_x)):.4f}")
     0.9998
     """
-    iml = np.asarray(iml, dtype=float)
+    im_x = np.asarray(im_x, dtype=float)
+    # Integrand per unit ln(im): P(C|im) * |dH/d im| * im, with the PCHIP slope.
     contribution = (
-        lognormal_fragility_curve(iml, theta_c, beta)
-        * -haz.pchip_dHdx(iml, im, H_im)
-        * iml
+        lognormal_fragility_curve(im_x, theta_c, beta)
+        * -haz.pchip_dHdx(im_x, im, H_im)
+        * im_x
     )
     if normalised:
+        # Divide by the same total that numerical_mafe_pchip reports.
         return contribution / numerical_mafe_pchip(theta_c, im, H_im, beta)
     return contribution
 
@@ -898,6 +977,14 @@ def risk_ratio_first_order(
     float or ndarray
         :math:`R_\lambda = \lambda_2 / \lambda_1`, with the broadcast shape
         of the inputs.
+
+    Notes
+    -----
+    The ratio holds only on the first-order hazard, and assumes both designs
+    see the same power-law hazard, with the same slope :math:`k_1`. Where
+    that is not a fair description of the real hazard curve over both
+    capacities, compute the two MAFEs separately (for example with
+    :func:`numerical_mafe_pchip`).
 
     References
     ----------
@@ -966,6 +1053,12 @@ def theta_ratio_first_order(
     float or ndarray
         :math:`R_\theta = \theta_2 / \theta_1`, with the broadcast shape of
         the inputs.
+
+    Notes
+    -----
+    As for :func:`risk_ratio_first_order`, this holds only on the
+    first-order hazard, and assumes both designs see the same power-law
+    hazard, with the same slope :math:`k_1`.
 
     References
     ----------
