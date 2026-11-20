@@ -58,16 +58,28 @@ meaningful over the band they were fitted to.
 ## Trailing zeros from OpenQuake
 
 OpenQuake writes a hazard of exactly zero at the highest levels, where the
-probability of exceedance is below the precision it stores. The PCHIP-based
-functions drop such a trailing run of zeros;
-{func}`~hazrisk.risk.numerical_mafe` and
-{func}`~hazrisk.risk.risk_contribution` accept it (the zeros add nothing). The
-fitting functions need a strictly positive curve, so trim the zeros first:
+probability of exceedance is below the precision it stores. Every function
+accepts such a trailing run of zeros, and uses it as follows:
 
-```python
-keep = H_im > 0
-im, H_im = im[keep], H_im[keep]
-```
+- **Integration** ({func}`~hazrisk.risk.numerical_mafe`,
+  {func}`~hazrisk.risk.numerical_mafe_pchip`,
+  {func}`~hazrisk.risk.risk_contribution`) uses the zeros: the integral runs
+  down to the first level where the hazard is zero. Further zeros add nothing.
+- **Fitting** (the `fit_*` functions in {mod}`hazrisk.hazard`) drops the
+  zeros, because the fits work with the logarithm of the hazard.
+- **PCHIP evaluation** ({func}`~hazrisk.hazard.pchip_approx`,
+  {func}`~hazrisk.hazard.pchip_dHdx`,
+  {func}`~hazrisk.risk.risk_contribution_pchip`) interpolates up to the last
+  level with a positive hazard and returns `nan` above it.
+
+A zero followed by a positive value is not a trailing run, and raises a
+`ValueError`.
+
+Keeping the zeros or trimming them off before calling
+{func}`~hazrisk.risk.numerical_mafe_pchip` gives different results when the
+fragility changes a lot between the last positive level and the first zero
+level. {doc}`examples/trailing_zeros` shows where the difference comes from
+and how to choose.
 
 ## Errors
 

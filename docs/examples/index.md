@@ -13,5 +13,6 @@ fitting
 closed_form_vs_numerical
 required_capacity
 risk_contribution
+trailing_zeros
 capacity_ratio
 ```

@@ -23,6 +23,10 @@ changes below matter to anyone who used them from git.
 - numpydoc docstrings for every public function, with formulas, references and
   examples that run as doctests.
 - Example hazard curves for three anonymised sites in `examples/data/`.
+- Example page *Trailing zeros: keep them or trim them?*: how the zeros at the
+  end of a hazard curve change `numerical_mafe_pchip` and
+  `risk_contribution_pchip`, and how to choose between keeping and trimming
+  them.
 
 ### Changed
 
