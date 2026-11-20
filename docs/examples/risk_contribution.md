@@ -33,7 +33,7 @@ DATA = Path("..") / ".." / "examples" / "data"
 
 
 def load_site(label):
-    """Return (im, H_im) of an example site, as written by OpenQuake."""
+    """Return (im, H_im) of an example site."""
     data = np.loadtxt(DATA / f"site_{label}.csv", delimiter=",", skiprows=1)
     return data[:, 0], data[:, 1]
 
@@ -69,8 +69,9 @@ log-log space instead of PCHIP: its hazard slope is constant within each
 interval, so it steps at every tabulated level.
 
 ```{code-cell} python
-iml = np.geomspace(im[0], im[H_im > 0][-1], 2000)
-curve = risk.risk_contribution_pchip(iml, theta_c, im, H_im, beta)
+# Evaluation levels up to the last positive hazard level, where PCHIP stops.
+im_x = np.geomspace(im[0], im[H_im > 0][-1], 2000)
+curve = risk.risk_contribution_pchip(im_x, theta_c, im, H_im, beta)
 
 # Bars: the shares of the intervals (not the tail), per unit ln(im).
 width_ln = np.diff(np.log(im))
@@ -79,23 +80,24 @@ density = shares[:-1] / width_ln
 # Straight lines in log-log: dH/dim = s_i * H / im within interval i, with
 # s_i the log-log slope of the interval, so the integrand per unit ln(im)
 # is P * |s_i| * H. Normalised by the same total as the PCHIP curve.
+# Log-log straight lines need the positive part of the curve only.
 pos = H_im > 0
 im_p, H_p = im[pos], H_im[pos]
 slopes = np.diff(np.log(H_p)) / np.diff(np.log(im_p))
-interval = np.clip(np.searchsorted(im_p, iml, side="right") - 1, 0, len(slopes) - 1)
-H_lin = np.exp(np.interp(np.log(iml), np.log(im_p), np.log(H_p)))
-P_fine = fragility.lognormal_fragility_curve(iml, theta_c, beta)
+interval = np.clip(np.searchsorted(im_p, im_x, side="right") - 1, 0, len(slopes) - 1)
+H_lin = np.exp(np.interp(np.log(im_x), np.log(im_p), np.log(H_p)))
+P_fine = fragility.lognormal_fragility_curve(im_x, theta_c, beta)
 straight = (P_fine * np.abs(slopes[interval]) * H_lin
             / risk.numerical_mafe_pchip(theta_c, im, H_im, beta))
 
 fig, ax = plt.subplots(figsize=(8, 4.6))
 ax.bar(im[:-1], density, width=np.diff(im), align="edge", color="C0",
        alpha=0.35, edgecolor="C0", label="risk_contribution (per interval)")
-ax.semilogx(iml, curve, "-", color="C3", lw=2, label="risk_contribution_pchip")
-ax.semilogx(iml, straight, "--", color="0.3", lw=1,
+ax.semilogx(im_x, curve, "-", color="C3", lw=2, label="risk_contribution_pchip")
+ax.semilogx(im_x, straight, "--", color="0.3", lw=1,
             label="straight lines in log-log")
 ax.axvline(theta_c, color="k", ls=":", lw=1, label=rf"$\theta_c$ = {theta_c} g")
-ax.set(xscale="log", xlim=(0.02, 3), xlabel="AvgSA(0.3 s) [g]",
+ax.set(xscale="log", xlim=(0.02, 3), xlabel="AvgSA[0,3] [g]",
        ylabel=r"$d\lambda_C / d \ln im$ (normalised)",
        title=rf"site B, $\theta_c$ = {theta_c} g, $\beta$ = {beta}")
 ax.grid(True, which="both", lw=0.4, alpha=0.4)

@@ -19,7 +19,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hazrisk import hazard
+from hazrisk import convert, hazard
 
 # White figure background, so the figures read well in the dark theme too.
 plt.rcParams["figure.facecolor"] = "w"
@@ -30,38 +30,42 @@ DATA = Path("..") / ".." / "examples" / "data"
 
 
 def load_site(label):
-    """Return (im, H_im) of an example site, without the trailing zeros."""
+    """Return (im, H_im) of an example site."""
     data = np.loadtxt(DATA / f"site_{label}.csv", delimiter=",", skiprows=1)
-    im, H_im = data[:, 0], data[:, 1]
-    # The fitting functions need a strictly positive curve.
-    keep = H_im > 0
-    return im[keep], H_im[keep]
+    return data[:, 0], data[:, 1]
 
 
 def hazard_axes(ax, im, H_im, title):
     """Plot the numerical curve on log-log axes, with labels."""
+    # Only the positive levels: the trailing zeros have no place on a log axis.
+    pos = H_im > 0
+    im, H_im = im[pos], H_im[pos]
     ax.loglog(im, H_im, "o-", color="0.25", ms=3, lw=1.2, zorder=5,
               label="numerical hazard curve")
-    ax.set(xlabel="AvgSA(0.3 s) [g]", ylabel="MAFE [1/yr]", title=title)
+    ax.set(xlabel="AvgSA[0,3] [g]", ylabel="H(im) [1/yr]", title=title)
     ax.set_ylim(H_im[-1] / 3, H_im[0] * 3)
     ax.grid(True, which="both", lw=0.4, alpha=0.4)
 
 
 im, H_im = load_site("B")
-fine = np.geomspace(im[0], im[-1], 300)
+# The fitting functions drop the trailing zeros themselves. The plots and the
+# log-log interpolation of the anchors below need the positive part only.
+pos = H_im > 0
+im_pos, H_pos = im[pos], H_im[pos]
+fine = np.geomspace(im[0], im_pos[-1], 300)
 ```
 
 ## Through points or by regression
 
 A fit through points passes exactly through two (first order) or three (second
 order) points of the curve; here the 10 %, 5 % and 2 % in 50 year levels,
-converted to frequencies with {func}`~hazrisk.hazard.poe_to_mafe`. A
+converted to frequencies with {func}`~hazrisk.convert.poe_to_mafe`. A
 regression fits all the tabulated levels in a band, here return periods of 10
 to 10 000 years. Site B has only 25 levels, so the 475 to 2475 year band holds
 too few of them for a regression: the band has to be wider.
 
 ```{code-cell} python
-mafe_anchors = hazard.poe_to_mafe(np.array([0.10, 0.05, 0.02]), t=50)
+mafe_anchors = convert.poe_to_mafe(np.array([0.10, 0.05, 0.02]), t=50)
 band = (1e-4, 1e-1)
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True)
@@ -74,10 +78,11 @@ ax.loglog(fine, hazard.first_order_approx(fine, k0, k1), "--", color="C0",
 k0, k1, k2 = hazard.fit_second_order_points(im, H_im, mafe=mafe_anchors)
 ax.loglog(fine, hazard.second_order_approx(fine, k0, k1, k2), "-", color="C3",
           label=f"2nd order, 3 points: k1={k1:.3g}, k2={k2:.3g}")
-# Mark the anchors on the numerical curve (interpolated in log-log space).
-iml_anchors = np.exp(np.interp(np.log(mafe_anchors), np.log(H_im)[::-1],
-                               np.log(im)[::-1]))
-ax.plot(iml_anchors, mafe_anchors, "*", color="gold", ms=14, mec="k", mew=0.5,
+# Mark the anchors on the numerical curve (interpolated in log-log space,
+# so on the positive part of the curve).
+im_anchors = np.exp(np.interp(np.log(mafe_anchors), np.log(H_pos)[::-1],
+                              np.log(im_pos)[::-1]))
+ax.plot(im_anchors, mafe_anchors, "*", color="gold", ms=14, mec="k", mew=0.5,
         zorder=10, label="10 %, 5 %, 2 % in 50 yr")
 ax.legend(fontsize=8, loc="lower left")
 
@@ -134,7 +139,7 @@ bands = {
     "250 to 2475 yr": (1 / 2475, 1 / 250),
     "100 to 5000 yr": (1 / 5000, 1 / 100),
     "10 to 10 000 yr": (1e-4, 1e-1),
-    "whole curve": (H_im[-1], H_im[0]),
+    "whole curve": (H_pos[-1], H_pos[0]),
 }
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True)
@@ -155,6 +160,12 @@ for ax, order in zip(axes, (1, 2)):
 fig.tight_layout()
 ```
 
+The $r^2$ is computed only on the tabulated levels inside the fitting band. It
+says how well the fit follows the curve there, and nothing about the curve
+outside the band. On site B, the second-order regression over the 10 to
+10 000 year band has an $r^2$ of almost one, yet around 1 g, far below the
+band, it overestimates the hazard by more than an order of magnitude.
+
 ## Three sites
 
 The three example sites have increasing curvature, from A to C. Below, the
@@ -166,7 +177,8 @@ inside the plot:
 fig, axes = plt.subplots(1, 3, figsize=(13, 4.4))
 for ax, label in zip(axes, "ABC"):
     im_s, H_s = load_site(label)
-    fine_s = np.geomspace(im_s[0], im_s[-1], 300)
+    # Plot the fits up to the last positive level of the curve.
+    fine_s = np.geomspace(im_s[0], im_s[H_s > 0][-1], 300)
     hazard_axes(ax, im_s, H_s, f"site {label}")
     k0, k1, r2 = hazard.fit_first_order_regression(im_s, H_s, mafe_band=band)
     ax.loglog(fine_s, hazard.first_order_approx(fine_s, k0, k1), "--",

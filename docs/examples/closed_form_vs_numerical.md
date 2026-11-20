@@ -20,7 +20,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from hazrisk import fragility, hazard, risk
+from hazrisk import convert, fragility, hazard, risk
 
 plt.rcParams["figure.facecolor"] = "w"
 plt.rcParams["savefig.facecolor"] = "w"
@@ -29,7 +29,7 @@ DATA = Path("..") / ".." / "examples" / "data"
 
 
 def load_site(label):
-    """Return (im, H_im) of an example site"""
+    """Return (im, H_im) of an example site."""
     data = np.loadtxt(DATA / f"site_{label}.csv", delimiter=",", skiprows=1)
     return data[:, 0], data[:, 1]
 
@@ -43,26 +43,25 @@ betas = np.linspace(0.1, 0.7, 25)
 For each site the median capacity is put where the curve has a 2 % in 50 year
 frequency, so the three are comparable. The closed forms use the regression
 fits over the 10 to 10 000 year band; the numerical result is
-{func}`~hazrisk.risk.numerical_mafe_pchip`, which handles the trailing zeros
-itself (the fits need them removed).
+{func}`~hazrisk.risk.numerical_mafe_pchip`. Both the fits and the numerical
+result take the curve with its trailing zeros.
 
 ```{code-cell} python
 fig, axes = plt.subplots(1, 3, figsize=(13, 4.2), sharey=False)
 for ax, label in zip(axes, "ABC"):
     im, H_im = load_site(label)
+    k0_1, k1_1, _ = hazard.fit_first_order_regression(im, H_im, mafe_band=band)
+    k0, k1, k2, _ = hazard.fit_second_order_regression(im, H_im, mafe_band=band)
+    # Median capacity at the 2 % in 50 yr level of the numerical curve,
+    # interpolated in log-log space, so on the positive part of the curve.
     pos = H_im > 0
-    k0_1, k1_1, _ = hazard.fit_first_order_regression(im[pos], H_im[pos],
-                                                      mafe_band=band)
-    k0, k1, k2, _ = hazard.fit_second_order_regression(im[pos], H_im[pos],
-                                                       mafe_band=band)
-    # Median capacity at the 2 % in 50 yr level of the numerical curve.
-    mafe_2in50 = hazard.poe_to_mafe(0.02, t=50)
+    mafe_2in50 = convert.poe_to_mafe(0.02, t=50)
     theta_c = float(np.exp(np.interp(np.log(mafe_2in50), np.log(H_im[pos])[::-1],
                                      np.log(im[pos])[::-1])))
 
     numerical = risk.numerical_mafe_pchip(theta_c, im, H_im, betas)
-    first = risk.mafe_first_order(theta_c, k0_1, k1_1, betas)
-    second = risk.mafe_second_order(theta_c, k0, k1, k2, betas)
+    first = risk.mafe_first_order(theta_c, betas, k0_1, k1_1)
+    second = risk.mafe_second_order(theta_c, betas, k0, k1, k2)
 
     ax.semilogy(betas, numerical, "k-", lw=2, label="numerical (PCHIP)")
     ax.semilogy(betas, first, "--", color="C0", label="1st-order closed form")
@@ -77,9 +76,9 @@ fig.tight_layout()
 With $\theta_c$ at the 2 % in 50 year level, the risk comes from intensities
 inside the fitted band, and the second-order closed form stays within a few
 per cent of the numerical result on all three sites and for every $\beta$. The
-first-order regression over such a wide fitting band does not pass through the 
-actual hazard curve at $\theta_c$, so it is off even at small $\beta$ (by about 
-a third on site B), and its error changes with $\beta$ as the risk moves to 
+first-order regression over such a wide fitting band does not pass through the
+actual hazard curve at $\theta_c$, so it is off even at small $\beta$ (by about
+a third on site B), and its error changes with $\beta$ as the risk moves to
 intensities where the power law and the curve part ways.
 
 The closed forms are only as good as the fit over the intensities that carry
@@ -91,7 +90,7 @@ risk by about a third.
 ## Interpolating the tabulated curve
 
 {func}`~hazrisk.risk.numerical_mafe` integrates the fragility against the
-hazard at whatever levels it is given. On the 25 levels of the provided PSHA 
+hazard at whatever levels it is given. On the 25 levels of the provided PSHA
 curves that is
 coarse. Two ways to refine the curve first are straight lines between the
 levels in log-log space, and PCHIP in log-log space (what
@@ -101,6 +100,8 @@ refined levels grows (site B, $\beta = 0.4$):
 
 ```{code-cell} python
 im, H_im = load_site("B")
+# The straight-line interpolation works in log-log space, so on the positive
+# part of the curve only.
 pos = H_im > 0
 im_p, H_p = im[pos], H_im[pos]
 theta_c, beta = 0.3, 0.4
@@ -108,9 +109,9 @@ theta_c, beta = 0.3, 0.4
 
 def mafe_straight_lines(n_im):
     """MAFC with the hazard interpolated by straight lines in log-log space."""
-    iml = np.geomspace(im_p[0], im_p[-1], n_im)
-    H_lin = np.exp(np.interp(np.log(iml), np.log(im_p), np.log(H_p)))
-    P = fragility.lognormal_fragility_curve(iml, theta_c, beta)
+    im_x = np.geomspace(im_p[0], im_p[-1], n_im)
+    H_lin = np.exp(np.interp(np.log(im_x), np.log(im_p), np.log(H_p)))
+    P = fragility.lognormal_fragility_curve(im_x, theta_c, beta)
     return risk.numerical_mafe(H_lin, P)
 
 

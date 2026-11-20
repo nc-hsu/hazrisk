@@ -39,7 +39,6 @@ quickstart
 examples/index
 theory
 conventions
-limitations
 data
 ```
 

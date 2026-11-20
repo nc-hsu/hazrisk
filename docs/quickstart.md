@@ -17,8 +17,8 @@ its own.
 import numpy as np
 from hazrisk import hazard, risk
 
-# A tabulated hazard curve (e.g. from OpenQuake): im in g, MAFE per year,
-# ordered by increasing im.
+# A tabulated hazard curve H(im) (e.g. from OpenQuake): im in g, mean annual
+# frequency of exceedance per year, ordered by increasing im.
 im = np.array([0.00213, 0.0044, 0.00909, 0.0188, 0.0387,
                0.08, 0.165, 0.341, 0.704, 1.45])
 H_im = np.array([3.43e-2, 1.73e-2, 7.24e-3, 2.44e-3, 6.49e-4,
@@ -39,7 +39,7 @@ The fragility is lognormal with a median capacity of 0.3 g and a dispersion of
 
 ```{code-cell} python
 theta_c, beta = 0.3, 0.4
-print(f"closed form: {risk.mafe_second_order(theta_c, k0, k1, k2, beta):.3e} /yr")
+print(f"closed form: {risk.mafe_second_order(theta_c, beta, k0, k1, k2):.3e} /yr")
 print(f"numerical:   {risk.numerical_mafe_pchip(theta_c, im, H_im, beta):.3e} /yr")
 ```
 
@@ -53,7 +53,7 @@ The inverse question, the median capacity needed for a target frequency of
 collapse of $2 \times 10^{-4}$ per year (on the fitted curve):
 
 ```{code-cell} python
-theta_req = risk.required_capacity_second_order(2e-4, k0, k1, k2, beta)
+theta_req = risk.required_capacity_second_order(2e-4, beta, k0, k1, k2)
 print(f"required median capacity: {theta_req:.3f} g")
 ```
 

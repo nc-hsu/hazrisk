@@ -39,10 +39,9 @@ DATA = Path("..") / ".." / "examples" / "data"
 
 
 def load_site(label):
-    """Return (im, H_im) of an example site, without the trailing zeros."""
+    """Return (im, H_im) of an example site."""
     data = np.loadtxt(DATA / f"site_{label}.csv", delimiter=",", skiprows=1)
-    keep = data[:, 1] > 0
-    return data[keep, 0], data[keep, 1]
+    return data[:, 0], data[:, 1]
 
 
 # k1 of the first-order regression over the 10 to 10 000 yr band, per site.
@@ -93,8 +92,8 @@ fig.tight_layout()
 
 The flatter the hazard curve (the smaller $k_1$, here site B over this band),
 the more capacity a given reduction in risk costs: halving the risk takes a
-factor $2^{1/k_1}$ on the capacity when the dispersion stays the same. With equal dispersions the result
-does not depend on $\beta_1$, so the three line styles coincide on the left. A
+factor $2^{1/k_1}$ on the capacity when the dispersion stays the same. With
+equal dispersions the result does not depend on $\beta_1$, so the three line styles coincide on the left. A
 smaller dispersion for the new design (right) reduces the risk by itself, so
 less extra capacity is needed, and at a risk ratio of one the capacity can
 even be lowered.

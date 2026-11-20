@@ -13,7 +13,7 @@ second-order hazard approximation.
 
 ## Contents
 
-- Intensity measure: average spectral acceleration AvgSA(0.3 s).
+- Intensity measure: average spectral acceleration AvgSA[0,3].
 - Statistic: the mean hazard curve.
 - Computed with OpenQuake on the 2020 European Seismic Hazard Model (ESHM20).
 - The sites are anonymised: no names, coordinates or site identifiers are
@@ -26,13 +26,13 @@ Each file has a header line and two columns:
 | `im` | intensity measure level, AvgSA[0,3] | g |
 | `mafe` | mean annual frequency of exceeding `im` | 1/year |
 
-The IM is calculate for based on 10 linearly spaced periods on the inclusive interval
-0 - 3 seconds (i.e. the PGA is included in the calculation of the AvgSA).
-The investigation time is 1 year. The curves are given exactly as OpenQuake
-wrote them, including the zeros at the highest levels, where the probability
-of exceedance is below the precision OpenQuake stores. hazrisk's PCHIP
-functions drop such a trailing run of zeros; the fitting functions need it
-removed first.
+The IM, AvgSA[0,3], is the average spectral acceleration over 10 linearly
+spaced periods on the inclusive interval 0 to 3 seconds (so the PGA is
+included). The investigation time is 1 year. The curves are given exactly as
+OpenQuake wrote them, including the zeros at the highest levels, where the
+probability of exceedance is below the precision OpenQuake stores. hazrisk
+accepts the curves with these zeros; see the Conventions page of the
+documentation for how each function uses them.
 
 ## Licence and source
 

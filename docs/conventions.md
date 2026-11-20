@@ -87,8 +87,8 @@ hazrisk raises a `ValueError`, rather than returning a wrong number, when:
 
 - a tabulated hazard curve increases somewhere, is not one-dimensional, or does
   not match the length of the fragility (integration and contribution
-  functions), or is not strictly positive and strictly decreasing (fitting
-  functions);
+  functions), or is not strictly positive and strictly decreasing apart from a
+  trailing run of zeros (fitting and PCHIP functions);
 - a fitting band holds too few levels, or both an intensity band and a
   frequency band are given;
 - $1 + 2 k_2 \beta^2 \le 0$ in a second-order closed form;

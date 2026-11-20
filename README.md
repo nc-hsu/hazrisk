@@ -35,7 +35,9 @@ pip install "hazrisk[plot]"
 import numpy as np
 from hazrisk import hazard, risk
 
-# A tabulated hazard curve (e.g. from OpenQuake): im in g, MAFE per year.
+# A tabulated hazard curve H(im) (e.g. from OpenQuake): im in g, mean annual
+# frequency of exceedance per year. Trailing zeros, as OpenQuake writes them,
+# can be left in.
 im = np.array([0.00213, 0.0044, 0.00909, 0.0188, 0.0387, 0.08, 0.165, 0.341, 0.704, 1.45])
 H_im = np.array([3.43e-2, 1.73e-2, 7.24e-3, 2.44e-3, 6.49e-4, 1.36e-4, 1.97e-5, 1.6e-6, 5.55e-8, 4.42e-10])
 
@@ -44,7 +46,7 @@ k0, k1, k2, r2 = hazard.fit_second_order_regression(im, H_im, mafe_band=(1e-4, 1
 
 # Mean annual frequency of collapse for a median capacity of 0.3 g, beta = 0.4:
 theta_c, beta = 0.3, 0.4
-print(f"closed form: {risk.mafe_second_order(theta_c, k0, k1, k2, beta):.3e} /yr")
+print(f"closed form: {risk.mafe_second_order(theta_c, beta, k0, k1, k2):.3e} /yr")
 print(f"numerical:   {risk.numerical_mafe_pchip(theta_c, im, H_im, beta):.3e} /yr")
 ```
 
@@ -60,13 +62,16 @@ tabulated curve itself.
 
 ## What is in the package
 
-The package follows the chain hazard → fragility → risk, one module per step.
+The package follows the chain hazard → fragility → risk, one module per step,
+with a fourth module for converting between probability, frequency and return
+period.
 
 | Module | Main functions |
 |---|---|
-| `hazrisk.hazard` | `first_order_approx`, `second_order_approx` (and `*_dHdx`): analytical hazard curves; `fit_first_order_points`, `fit_second_order_points`, `fit_first_order_regression`, `fit_second_order_regression`: fit them to a numerical curve; `pchip_interpolant`, `pchip_approx`, `pchip_dHdx`: smooth interpolation of a tabulated curve; `poe_to_mafe`, `mafe_to_poe`, `poe_to_rtp`: probability, frequency and return period |
+| `hazrisk.hazard` | `first_order_approx`, `second_order_approx` (and `*_dHdx`): analytical hazard curves; `fit_first_order_points`, `fit_second_order_points`, `fit_first_order_regression`, `fit_second_order_regression`: fit them to a numerical curve; `pchip_interpolant`, `pchip_approx`, `pchip_dHdx`: smooth interpolation of a tabulated curve |
 | `hazrisk.fragility` | `lognormal_fragility_curve`: probability of the limit state given the intensity |
 | `hazrisk.risk` | `mafe_first_order`, `mafe_second_order`: closed-form MAFE; `required_capacity_first_order`, `required_capacity_second_order`: median capacity for a target MAFE; `numerical_mafe`, `numerical_mafe_pchip`: numerical integration; `risk_contribution`, `risk_contribution_pchip`: where the risk comes from; `risk_ratio_first_order`, `theta_ratio_first_order`: ratios between two designs |
+| `hazrisk.convert` | `poe_to_mafe`, `mafe_to_poe`, `poe_to_rtp`, `rtp_to_poe`, `mafe_to_rtp`, `rtp_to_mafe`: probability of exceedance in `t` years, mean annual frequency and return period |
 
 ## Documentation
 

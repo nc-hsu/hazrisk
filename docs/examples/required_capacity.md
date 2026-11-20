@@ -30,7 +30,7 @@ DATA = Path("..") / ".." / "examples" / "data"
 
 
 def load_site(label):
-    """Return (im, H_im) of an example site, as written by OpenQuake."""
+    """Return (im, H_im) of an example site."""
     data = np.loadtxt(DATA / f"site_{label}.csv", delimiter=",", skiprows=1)
     return data[:, 0], data[:, 1]
 
@@ -39,12 +39,13 @@ def required_capacity_numerical(target, im, H_im, beta):
     """Median capacity at which the PCHIP-integrated MAFC equals the target.
 
     The MAFC decreases monotonically with theta_c, so a bracketing root
-    finder on ln(theta_c) is enough. The bracket stays inside the tabulated
-    curve.
+    finder on ln(theta_c) is enough. The bracket stays inside the positive
+    part of the tabulated curve.
     """
     def f(x):
         return np.log(risk.numerical_mafe_pchip(np.exp(x), im, H_im, beta) / target)
 
+    # Upper end of the bracket: one unit of ln(im) below the last positive level.
     pos = H_im > 0
     return float(np.exp(brentq(f, np.log(im[0]) + 1, np.log(im[pos][-1]) - 1)))
 
@@ -52,7 +53,8 @@ def required_capacity_numerical(target, im, H_im, beta):
 band = (1e-4, 1e-1)  # fitting band: return periods 10 to 10 000 yr
 beta = 0.4
 # Target MAFC, 1/yr. Lower targets need capacities so close to the end of
-# site A's curve that the tail term would dominate the numerical result.
+# site A's curve that the step down to its first zero level would dominate
+# the numerical result.
 targets = np.geomspace(3e-5, 1e-3, 25)
 ```
 
@@ -60,13 +62,10 @@ targets = np.geomspace(3e-5, 1e-3, 25)
 fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
 for ax, label in zip(axes, "ABC"):
     im, H_im = load_site(label)
-    pos = H_im > 0
-    k0_1, k1_1, _ = hazard.fit_first_order_regression(im[pos], H_im[pos],
-                                                      mafe_band=band)
-    k0, k1, k2, _ = hazard.fit_second_order_regression(im[pos], H_im[pos],
-                                                       mafe_band=band)
-    first = risk.required_capacity_first_order(targets, k0_1, k1_1, beta)
-    second = risk.required_capacity_second_order(targets, k0, k1, k2, beta)
+    k0_1, k1_1, _ = hazard.fit_first_order_regression(im, H_im, mafe_band=band)
+    k0, k1, k2, _ = hazard.fit_second_order_regression(im, H_im, mafe_band=band)
+    first = risk.required_capacity_first_order(targets, beta, k0_1, k1_1)
+    second = risk.required_capacity_second_order(targets, beta, k0, k1, k2)
     numerical = [required_capacity_numerical(t, im, H_im, beta) for t in targets]
 
     ax.loglog(targets, numerical, "k-", lw=2, label="numerical (PCHIP)")
@@ -90,14 +89,11 @@ target = 1e-4
 print(f"{'site':>4}  {'numerical':>9}  {'1st order':>9}  {'2nd order':>9}   [g]")
 for label in "ABC":
     im, H_im = load_site(label)
-    pos = H_im > 0
-    k0_1, k1_1, _ = hazard.fit_first_order_regression(im[pos], H_im[pos],
-                                                      mafe_band=band)
-    k0, k1, k2, _ = hazard.fit_second_order_regression(im[pos], H_im[pos],
-                                                       mafe_band=band)
+    k0_1, k1_1, _ = hazard.fit_first_order_regression(im, H_im, mafe_band=band)
+    k0, k1, k2, _ = hazard.fit_second_order_regression(im, H_im, mafe_band=band)
     print(f"{label:>4}  {required_capacity_numerical(target, im, H_im, beta):9.3f}"
-          f"  {risk.required_capacity_first_order(target, k0_1, k1_1, beta):9.3f}"
-          f"  {risk.required_capacity_second_order(target, k0, k1, k2, beta):9.3f}")
+          f"  {risk.required_capacity_first_order(target, beta, k0_1, k1_1):9.3f}"
+          f"  {risk.required_capacity_second_order(target, beta, k0, k1, k2):9.3f}")
 ```
 
 Each closed-form capacity is the exact inverse of its forward calculation:
@@ -105,6 +101,6 @@ putting it back into {func}`~hazrisk.risk.mafe_second_order` returns the
 target.
 
 ```{code-cell} python
-theta = risk.required_capacity_second_order(target, k0, k1, k2, beta)
-print(f"{risk.mafe_second_order(theta, k0, k1, k2, beta):.6e}")
+theta = risk.required_capacity_second_order(target, beta, k0, k1, k2)
+print(f"{risk.mafe_second_order(theta, beta, k0, k1, k2):.6e}")
 ```

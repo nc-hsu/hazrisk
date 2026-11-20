@@ -14,9 +14,6 @@
    first_order_dHdx
    second_order_approx
    second_order_dHdx
-   poe_to_mafe
-   mafe_to_poe
-   poe_to_rtp
    fit_first_order_points
    fit_second_order_points
    fit_first_order_regression

@@ -14,8 +14,16 @@ changes below matter to anyone who used them from git.
 - Packaging metadata: dependencies (numpy >= 2.0, scipy >= 1.13), Python >= 3.12,
   licence, classifiers and project links, so `pip install` gives a working
   package.
-- `hazrisk.__version__`; `import hazrisk` imports the `hazard`, `fragility` and
-  `risk` modules.
+- `hazrisk.__version__`; `import hazrisk` imports the `hazard`, `fragility`,
+  `risk` and `convert` modules.
+- `hazrisk.convert`, for probability of exceedance in `t` years, mean annual
+  frequency and return period: `poe_to_mafe`, `mafe_to_poe`, `poe_to_rtp`,
+  `rtp_to_poe`, `mafe_to_rtp` and `rtp_to_mafe`. They apply to any mean annual
+  frequency, of the hazard or of a limit state.
+- Hazard curves that end in a run of zeros, as OpenQuake writes them, are
+  accepted by every function: the integration uses the zeros, the fitting
+  functions drop them, and the PCHIP functions evaluate up to the last
+  positive level.
 - `hazard.pchip_interpolant`, the public PCHIP interpolant of a hazard curve in
   log-log space, which `pchip_approx`, `pchip_dHdx` and `numerical_mafe_pchip`
   are built on.
@@ -34,6 +42,25 @@ changes below matter to anyone who used them from git.
   `pip install -e .` again.
 - Every public function accepts Python lists and integer arrays as well as
   float arrays.
+- **Argument order of the closed forms:** the dispersion `beta` comes second,
+  after the capacity or the target, followed by the hazard coefficients:
+  `mafe_first_order(theta_c, beta, k0, k1)`,
+  `required_capacity_first_order(target_mafe, beta, k0, k1)`,
+  `mafe_second_order(theta_c, beta, k0, k1, k2)` and
+  `required_capacity_second_order(target_mafe, beta, k0, k1, k2)`. Calls that
+  pass the arguments by position in the order `k0, k1[, k2], beta` must be
+  updated; calls by keyword are unaffected.
+- `poe_to_mafe`, `mafe_to_poe` and `poe_to_rtp` are in `hazrisk.convert`, not
+  `hazrisk.hazard`.
+- The evaluation levels of `pchip_approx`, `pchip_dHdx` and
+  `risk_contribution_pchip` are called `im_x` (was `iml`).
+- `numerical_mafe_pchip` integrates a curve that ends in zeros down to the
+  first zero level, instead of stopping at the last positive level and adding
+  the tail term there. Results change for median capacities near or above the
+  last positive level (by up to about 5 % on the example curves), and the
+  normalised `risk_contribution_pchip` changes with them. To get the result
+  without the zeros, trim them before the call; the example page *Trailing
+  zeros* compares the two.
 - `risk_ratio_first_order` and `theta_ratio_first_order` use ordinary numpy
   broadcasting: single numbers give a single number. They no longer build a
   4-D outer product from four 1-D vectors; for that grid, call
