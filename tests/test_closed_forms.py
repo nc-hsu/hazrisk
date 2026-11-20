@@ -6,9 +6,6 @@
 
 The conversions between PoE, MAFE and return period are tested in
 test_convert.py.
-
-Literature benchmarks (worked examples from Cornell et al. 2002 and
-Vamvatsikos 2013) are not included yet.
 """
 
 import itertools

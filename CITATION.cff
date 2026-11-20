@@ -35,6 +35,19 @@ keywords:
   - MAFE
   - earthquake engineering
 references:
+  - type: book
+    authors:
+      - family-names: Baker
+        given-names: J. W.
+      - family-names: Bradley
+        given-names: B. A.
+      - family-names: Stafford
+        given-names: P. J.
+    title: "Seismic Hazard and Risk Analysis"
+    publisher:
+      name: "Cambridge University Press"
+    year: 2021
+    doi: "10.1017/9781108425056"
   - type: article
     authors:
       - family-names: Cornell
@@ -53,6 +66,29 @@ references:
     start: 526
     end: 533
     doi: "10.1061/(ASCE)0733-9445(2002)128:4(526)"
+  - type: article
+    authors:
+      - family-names: Fritsch
+        given-names: F. N.
+      - family-names: Butland
+        given-names: J.
+    title: "A method for constructing local monotone piecewise cubic interpolants"
+    journal: "SIAM Journal on Scientific and Statistical Computing"
+    year: 1984
+    volume: 5
+    issue: 2
+    start: 300
+    end: 304
+    doi: "10.1137/0905021"
+  - type: book
+    authors:
+      - family-names: Moler
+        given-names: C.
+    title: "Numerical Computing with MATLAB"
+    publisher:
+      name: "Society for Industrial and Applied Mathematics"
+    year: 2004
+    doi: "10.1137/1.9780898717952"
   - type: article
     authors:
       - family-names: Vamvatsikos

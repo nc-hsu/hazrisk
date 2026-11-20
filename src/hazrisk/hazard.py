@@ -847,12 +847,15 @@ def pchip_interpolant(im: ArrayLike, H_im: ArrayLike) -> PchipInterpolator:
     r"""PCHIP interpolant of a numerical hazard curve in log-log space.
 
     Returns the piecewise cubic Hermite interpolating polynomial (PCHIP;
-    Fritsch & Carlson 1980) :math:`f` of :math:`\ln H` against
+    Fritsch & Butland 1984; Moler 2004) :math:`f` of :math:`\ln H` against
     :math:`\ln im`, so that
 
     .. math::
 
         H(im) = \exp\left(f(\ln im)\right).
+
+    The interpolant is scipy's :class:`scipy.interpolate.PchipInterpolator`;
+    every PCHIP function in hazrisk uses this implementation.
 
     This is the object :func:`pchip_approx`, :func:`pchip_dHdx` and
     :func:`hazrisk.risk.numerical_mafe_pchip` evaluate. Building it once and
@@ -897,9 +900,13 @@ def pchip_interpolant(im: ArrayLike, H_im: ArrayLike) -> PchipInterpolator:
 
     References
     ----------
-    Fritsch, F. N. & Carlson, R. E. (1980). Monotone piecewise cubic
-    interpolation. *SIAM Journal on Numerical Analysis*, 17(2), 238-246.
-    https://doi.org/10.1137/0717021
+    Fritsch, F. N. & Butland, J. (1984). A method for constructing local
+    monotone piecewise cubic interpolants. *SIAM Journal on Scientific and
+    Statistical Computing*, 5(2), 300-304. https://doi.org/10.1137/0905021
+
+    Moler, C. (2004). *Numerical Computing with MATLAB*. Society for
+    Industrial and Applied Mathematics.
+    https://doi.org/10.1137/1.9780898717952
 
     Examples
     --------
@@ -923,8 +930,9 @@ def pchip_approx(im_x: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArra
 
     Evaluates :math:`H(im_x) = \exp(f(\ln im_x))`, with :math:`f` the
     interpolant of :func:`pchip_interpolant`: a piecewise cubic Hermite
-    interpolating polynomial (PCHIP; Fritsch & Carlson 1980) of
-    :math:`\ln H` against :math:`\ln im`. Between each pair of tabulated
+    interpolating polynomial (PCHIP; Fritsch & Butland 1984; Moler 2004) of
+    :math:`\ln H` against :math:`\ln im`, as implemented by
+    :class:`scipy.interpolate.PchipInterpolator`. Between each pair of tabulated
     levels the curve is a cubic fixed by the two end values and the two end
     slopes, and the slope at each level is a weighted harmonic mean of the
     slopes of the neighbouring segments.
@@ -968,9 +976,13 @@ def pchip_approx(im_x: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArra
 
     References
     ----------
-    Fritsch, F. N. & Carlson, R. E. (1980). Monotone piecewise cubic
-    interpolation. *SIAM Journal on Numerical Analysis*, 17(2), 238-246.
-    https://doi.org/10.1137/0717021
+    Fritsch, F. N. & Butland, J. (1984). A method for constructing local
+    monotone piecewise cubic interpolants. *SIAM Journal on Scientific and
+    Statistical Computing*, 5(2), 300-304. https://doi.org/10.1137/0905021
+
+    Moler, C. (2004). *Numerical Computing with MATLAB*. Society for
+    Industrial and Applied Mathematics.
+    https://doi.org/10.1137/1.9780898717952
 
     Examples
     --------
@@ -991,7 +1003,8 @@ def pchip_approx(im_x: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArra
 def pchip_dHdx(im_x: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
     r"""Derivative of the PCHIP-interpolated hazard curve, :math:`dH/d\,im`.
 
-    The interpolant is :math:`\ln H = f(\ln im)` (see
+    The interpolant is :math:`\ln H = f(\ln im)`, scipy's
+    :class:`scipy.interpolate.PchipInterpolator` (see
     :func:`pchip_interpolant`), i.e. :math:`H(im) = \exp(f(\ln im))`.
     Differentiating with the chain rule, the outer exponential gives
     :math:`H(im)`, the cubic gives its slope :math:`f'(\ln im)`, and
@@ -1030,9 +1043,13 @@ def pchip_dHdx(im_x: ArrayLike, im: ArrayLike, H_im: ArrayLike) -> FloatOrArray:
 
     References
     ----------
-    Fritsch, F. N. & Carlson, R. E. (1980). Monotone piecewise cubic
-    interpolation. *SIAM Journal on Numerical Analysis*, 17(2), 238-246.
-    https://doi.org/10.1137/0717021
+    Fritsch, F. N. & Butland, J. (1984). A method for constructing local
+    monotone piecewise cubic interpolants. *SIAM Journal on Scientific and
+    Statistical Computing*, 5(2), 300-304. https://doi.org/10.1137/0905021
+
+    Moler, C. (2004). *Numerical Computing with MATLAB*. Society for
+    Industrial and Applied Mathematics.
+    https://doi.org/10.1137/1.9780898717952
 
     Examples
     --------

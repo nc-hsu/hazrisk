@@ -44,6 +44,8 @@ code, which is licensed under GPL-3.0-or-later.
 They were computed from the ESHM20 source and ground motion models. If you use
 them, please cite ESHM20:
 
-Danciu, L. et al. (2021). The 2020 update of the European Seismic Hazard
-Model: Model Overview. EFEHR Technical Report 001, v1.0.0.
+Danciu, L., Nandan, S., Reyes, C., Basili, R., Weatherill, G., Beauval, C.,
+Rovida, A., Vilanova, S., Sesetyan, K., Bard, P.-Y., Cotton, F., Wiemer, S. &
+Giardini, D. (2021). The 2020 update of the European Seismic Hazard Model:
+Model Overview. EFEHR Technical Report 001, v1.0.0.
 <https://doi.org/10.12686/a15>

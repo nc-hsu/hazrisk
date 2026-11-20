@@ -41,7 +41,7 @@ def poe_to_mafe(poe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     r"""Mean annual frequency from a probability of exceedance in ``t`` years.
 
     Solving :math:`P = 1 - e^{-\lambda t}` for :math:`\lambda`
-    (Baker et al. 2021):
+    (Baker et al. 2021, Section 6.2.2):
 
     .. math::
 
@@ -64,6 +64,8 @@ def poe_to_mafe(poe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
     Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 6.2.2, pp. 253-255.
 
     Examples
     --------
@@ -82,7 +84,7 @@ def mafe_to_poe(mafe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     r"""Probability of exceedance in ``t`` years from a mean annual frequency.
 
     The inverse of :func:`poe_to_mafe`, for a Poisson process
-    (Baker et al. 2021):
+    (Baker et al. 2021, Section 6.2.2):
 
     .. math::
 
@@ -105,6 +107,8 @@ def mafe_to_poe(mafe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
     Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 6.2.2, pp. 253-255.
 
     Examples
     --------
@@ -122,7 +126,7 @@ def poe_to_rtp(poe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     r"""Mean return period from a probability of exceedance in ``t`` years.
 
     The return period is the reciprocal of the mean annual frequency
-    (:func:`poe_to_mafe`; Baker et al. 2021):
+    (:func:`poe_to_mafe`; Baker et al. 2021, Section 6.2.2):
 
     .. math::
 
@@ -144,6 +148,8 @@ def poe_to_rtp(poe: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
     Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 6.2.2, pp. 253-255.
 
     Examples
     --------
@@ -161,7 +167,7 @@ def rtp_to_poe(rtp: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     r"""Probability of exceedance in ``t`` years from a mean return period.
 
     The inverse of :func:`poe_to_rtp`: with :math:`\lambda = 1 / T_R` in
-    :math:`P = 1 - e^{-\lambda t}` (Baker et al. 2021),
+    :math:`P = 1 - e^{-\lambda t}` (Baker et al. 2021, Section 6.2.2),
 
     .. math::
 
@@ -184,6 +190,8 @@ def rtp_to_poe(rtp: ArrayLike, t: ArrayLike = 1) -> FloatOrArray:
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
     Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 6.2.2, pp. 253-255.
 
     Examples
     --------
@@ -204,7 +212,7 @@ def mafe_to_rtp(mafe: ArrayLike) -> FloatOrArray:
 
         T_R = \frac{1}{\lambda}
 
-    (Baker et al. 2021).
+    (Baker et al. 2021, Section 6.2.2).
 
     Parameters
     ----------
@@ -220,6 +228,8 @@ def mafe_to_rtp(mafe: ArrayLike) -> FloatOrArray:
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
     Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 6.2.2, pp. 253-255.
 
     Examples
     --------
@@ -236,7 +246,7 @@ def mafe_to_rtp(mafe: ArrayLike) -> FloatOrArray:
 def rtp_to_mafe(rtp: ArrayLike) -> FloatOrArray:
     r"""Mean annual frequency from a mean return period.
 
-    The inverse of :func:`mafe_to_rtp` (Baker et al. 2021):
+    The inverse of :func:`mafe_to_rtp` (Baker et al. 2021, Section 6.2.2):
 
     .. math::
 
@@ -257,6 +267,8 @@ def rtp_to_mafe(rtp: ArrayLike) -> FloatOrArray:
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
     Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 6.2.2, pp. 253-255.
 
     Examples
     --------

@@ -538,6 +538,8 @@ def numerical_mafe(H_im: ArrayLike, fragility: ArrayLike) -> FloatOrArray:
     ----------
     Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
     Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 9.4.1, pp. 382-385.
 
     Examples
     --------
@@ -585,9 +587,11 @@ def numerical_mafe_pchip(
 
     PCHIP interpolation is used to smooth out a coarsely sampled hazard curve
     to calculate the MAFE more accurately. The hazard is interpolated onto
-    ``n_im`` log-spaced levels with :func:`hazrisk.hazard.pchip_approx`
-    (Fritsch & Carlson 1980), the lognormal fragility is evaluated on the
-    same levels, and the pair is integrated with :func:`numerical_mafe`.
+    ``n_im`` log-spaced levels with :func:`hazrisk.hazard.pchip_approx`,
+    which uses scipy's :class:`scipy.interpolate.PchipInterpolator`
+    (Fritsch & Butland 1984; Moler 2004), the lognormal fragility is
+    evaluated on the same levels, and the pair is integrated with
+    :func:`numerical_mafe`.
 
     PCHIP is preferred to linear interpolation in log-log space because with
     linear interpolation the hazard slope is constant within each interval and
@@ -653,9 +657,13 @@ def numerical_mafe_pchip(
 
     References
     ----------
-    Fritsch, F. N. & Carlson, R. E. (1980). Monotone piecewise cubic
-    interpolation. *SIAM Journal on Numerical Analysis*, 17(2), 238-246.
-    https://doi.org/10.1137/0717021
+    Fritsch, F. N. & Butland, J. (1984). A method for constructing local
+    monotone piecewise cubic interpolants. *SIAM Journal on Scientific and
+    Statistical Computing*, 5(2), 300-304. https://doi.org/10.1137/0905021
+
+    Moler, C. (2004). *Numerical Computing with MATLAB*. Society for
+    Industrial and Applied Mathematics.
+    https://doi.org/10.1137/1.9780898717952
 
     Examples
     --------
@@ -779,6 +787,13 @@ def risk_contribution(
     above the last level. If the curve ends in zeros, that last element is
     zero and the step to the first zero level is an ordinary interval.
 
+    References
+    ----------
+    Baker, J. W., Bradley, B. A. & Stafford, P. J. (2021). *Seismic Hazard and
+    Risk Analysis*. Cambridge University Press.
+    https://doi.org/10.1017/9781108425056
+    Section 9.4.1, pp. 382-385.
+
     Examples
     --------
     >>> import numpy as np
@@ -837,7 +852,8 @@ def risk_contribution_pchip(
         \frac{d\lambda_C}{d \ln im} = P(C \mid im) \,
             \left|\frac{dH}{d\,im}\right| \, im,
 
-    with :math:`dH/d\,im` from :func:`hazrisk.hazard.pchip_dHdx`. Plotted
+    with :math:`dH/d\,im` from :func:`hazrisk.hazard.pchip_dHdx` (scipy's
+    :class:`scipy.interpolate.PchipInterpolator`). Plotted
     against ``im`` on a log axis, the area under it is the risk, so it shows
     which intensities the risk comes from: the continuous counterpart of
     :func:`risk_contribution`. Per unit :math:`\ln im` rather than per unit
@@ -897,9 +913,13 @@ def risk_contribution_pchip(
 
     References
     ----------
-    Fritsch, F. N. & Carlson, R. E. (1980). Monotone piecewise cubic
-    interpolation. *SIAM Journal on Numerical Analysis*, 17(2), 238-246.
-    https://doi.org/10.1137/0717021
+    Fritsch, F. N. & Butland, J. (1984). A method for constructing local
+    monotone piecewise cubic interpolants. *SIAM Journal on Scientific and
+    Statistical Computing*, 5(2), 300-304. https://doi.org/10.1137/0905021
+
+    Moler, C. (2004). *Numerical Computing with MATLAB*. Society for
+    Industrial and Applied Mathematics.
+    https://doi.org/10.1137/1.9780898717952
 
     Examples
     --------

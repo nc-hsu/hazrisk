@@ -19,7 +19,8 @@ a frequency or as a probability of exceedance in an investigation time $t$.
 If earthquakes, and so exceedances of $im$, occur as a Poisson process, an
 event with mean annual frequency $\lambda$ (a level of the hazard curve,
 $\lambda = H(im)$, or the frequency $\lambda_C$ of a limit state) happens at
-least once in $t$ years with probability
+least once in $t$ years with probability (Baker, Bradley & Stafford 2021,
+Section 6.2.2, pp. 253–255)
 
 $$
 P(t) = 1 - e^{-\lambda t},
@@ -108,7 +109,8 @@ should be trusted only over the band it was fitted to.
 
 To integrate a tabulated hazard curve accurately, hazrisk refines it between
 the tabulated levels with a piecewise cubic Hermite interpolating polynomial
-(PCHIP, Fritsch & Carlson 1980) of $\ln H$ against $\ln im$
+(PCHIP; Fritsch & Butland 1984; Moler 2004) of $\ln H$ against $\ln im$,
+using scipy's {class}`~scipy.interpolate.PchipInterpolator`
 ({func}`~hazrisk.hazard.pchip_interpolant`,
 {func}`~hazrisk.hazard.pchip_approx`, {func}`~hazrisk.hazard.pchip_dHdx`).
 PCHIP passes through every tabulated point, has a continuous first derivative,
@@ -134,7 +136,7 @@ $$
 \lambda_C = \int_0^\infty P(C \mid im) \left| \frac{dH}{d\,im} \right| d\,im
 $$
 
-(e.g. Baker, Bradley & Stafford 2021).
+(Baker, Bradley & Stafford 2021, Section 9.4.1, pp. 382–385).
 
 ### The change of variable in `numerical_mafe`
 
